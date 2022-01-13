@@ -43,7 +43,6 @@ Paste this code into your App.js component in the App function:
 ```
 let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
 ```
-<br/><br/>
 You must go to https://NativeNotify.com to receive a free App Id and App Token, or the registerNNPushToken function will not work. 
 <br/><br/>
 It's free to sign up. No credit card required.
