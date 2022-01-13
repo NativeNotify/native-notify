@@ -1,7 +1,7 @@
 {
   "name": "native-notify",
-  "version": "1.1.0",
-  "description": "React Native Expo Push Notifications by https://NativeNotify.com.",
+  "version": "1.1.2",
+  "description": "Expo Push Notifications (React Native) by https://NativeNotify.com. Send your first Expo push notification in less than a minute.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

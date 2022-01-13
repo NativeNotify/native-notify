@@ -10,6 +10,7 @@ Native Notify is a React Native Expo Push Notifications service. Native Notify m
 <br/><br/>
 Sign up for https://NativeNotify.com for free. No credit card required.
 <br/><br/>
+native-notify works in Expo managed-workflow or Expo bare-workflow.
 
 ## Install
 ```
