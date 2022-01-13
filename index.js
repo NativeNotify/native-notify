@@ -34,7 +34,6 @@ async function registerForPushNotificationsAsync() {
 
 export default function registerNNPushToken(appId, appToken) {
     const [data, setData] = useState({});
-    const signUpMessage = 'You must sign up for a free https://NativeNotify.com account to receive an App Id and an App Token, or this plugin will not work. Go to https://NativeNotify.com to sign up for free, no credit card required. Click "Create an App" after logging in and follow the instructions.'
 
     const responseListener = useRef();
 
@@ -55,11 +54,5 @@ export default function registerNNPushToken(appId, appToken) {
         }
     });
 
-    if(appId && appToken) {
-        return data;
-    } else {
-        return signUpMessage;
-    }
-
-    
+    return data;
 }
