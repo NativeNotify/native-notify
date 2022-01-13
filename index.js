@@ -43,7 +43,6 @@ export default function registerNNPushToken(appId, appToken) {
                 axios.post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
             });
             responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-                console.log(response.notification.request.content.data);
                 if(response.notification.request.content.data) {
                     setData(response.notification.request.content.data);
                 } else {
