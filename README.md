@@ -53,7 +53,7 @@ import React, { useEffect } from 'react';
 import registerNNPushToken from 'native-notify';
 
 export default function App() {
-     let pushDataObject = registerNNPushToken(957, 'GMzZMrvzLpzcLMSbSE9xE8');
+     let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
 
      useEffect(() => {
         console.log(pushDataObject);
