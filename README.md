@@ -13,7 +13,7 @@ Sign up for https://NativeNotify.com for free. No credit card required.
 ## Does native-notify work in Expo managed-workflow?
 Yes, native-notify works in Expo managed-workflow or Expo bare-workflow. You do NOT have to eject out of Expo to use native-notify.
 
-#Setup Guide:
+# Setup Guide:
 
 ## Step 1: Install
 ```
