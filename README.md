@@ -28,7 +28,15 @@ import registerNNPushToken from 'native-notify';
 ```
 
 ## Step 3: Make sure your App.js function is a hook function
-<strong>Your App function MUST be a hook function, or your push notifications will NOT work. This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a></strong>
+<strong>Your App function MUST be a hook function, or your push notifications will NOT work. Here is an example: </strong>
+<br/>
+```
+export default function App() {
+     ...
+}
+```
+<br/>
+This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a>
 
 ## Step 4: Paste
 Paste this code into your App.js component in the App function:
