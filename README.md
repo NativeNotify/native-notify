@@ -15,19 +15,19 @@ Yes, native-notify works in Expo managed-workflow or Expo bare-workflow. You do 
 
 # Setup Guide:
 
-## Step 1: Install
+### Step 1: Install
 ```
 npm i native-notify 
 expo install expo-device expo-notifications
 ```
 
-## Step 2: Import
+### Step 2: Import
 Import registerNNPushToken in your App.js file:
 ```
 import registerNNPushToken from 'native-notify';
 ```
 
-## Step 3: Make sure your App.js function is a hook function
+### Step 3: Make sure your App.js function is a hook function
 <strong>Your App function MUST be a hook function, or your push notifications will NOT work. Here is an example: </strong>
 <br/>
 ```
@@ -38,7 +38,7 @@ export default function App() {
 
 This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a>
 
-## Step 4: Paste
+### Step 4: Paste
 Paste this code into your App.js component in the App function:
 ```
 let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
@@ -48,7 +48,7 @@ You must go to https://NativeNotify.com to receive a free App Id and App Token, 
 <br/><br/>
 It's free to sign up. No credit card required.
 
-## Example of an App.js component with native-notify code included:
+### Example of an App.js component with native-notify code included:
 ```
 import React, { useEffect } from 'react';
 import registerNNPushToken from 'native-notify';
@@ -66,7 +66,7 @@ export default function App() {
 }
 ```
 
-## Use
+# Use
 The registerNNPushToken will register your user's Native Notify push notification token and will return a data object. You can then send your users push notifications in the https://NativeNotify.com push notification portal.
 <br/><br/>
 You can send data objects with your Native Notify push notifications. Once a user taps on your Native Notify push notification, the value of the data object will be returned to this pushDataObject variable. You can use this value to do things like redirect your users to a particular screen once a Native Notify push notification is tapped.
