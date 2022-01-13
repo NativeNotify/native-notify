@@ -13,22 +13,28 @@ Sign up for https://NativeNotify.com for free. No credit card required.
 ## Does native-notify work in Expo managed-workflow?
 Yes, native-notify works in Expo managed-workflow or Expo bare-workflow. You do NOT have to eject out of Expo to use native-notify.
 
-## Install
+#Setup Guide:
+
+## Step 1: Install
 ```
 npm i native-notify 
 expo install expo-device expo-notifications
 ```
 
-## Setup
+## Step 2: Import
 Import registerNNPushToken in your App.js file:
 ```
 import registerNNPushToken from 'native-notify';
 ```
+
+## Step 3: Make sure your App.js function is a hook function
+<strong>Your App function MUST be a hook function, or your push notifications will NOT work. This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a></strong>
+
+## Step 4: Paste
 Paste this code into your App.js component in the App function:
 ```
 let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
 ```
-<strong>You App function MUST be a hook function, or your push notifications will NOT work. This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a></strong>
 <br/><br/>
 You must go to https://NativeNotify.com to receive a free App Id and App Token, or the registerNNPushToken function will not work. 
 <br/><br/>
