@@ -9,8 +9,9 @@
 Native Notify is a React Native Expo Push Notifications service. Native Notify makes React Native Expo Push Notifications simple. With this native-notify plugin, you can send your first push notification in under 1 minute.
 <br/><br/>
 Sign up for https://NativeNotify.com for free. No credit card required.
-<br/><br/>
-native-notify works in Expo managed-workflow or Expo bare-workflow.
+
+## Does native-notify work in Expo managed-workflow?
+Yes, native-notify works in Expo managed-workflow or Expo bare-workflow. You do NOT have to eject out of Expo to use native-notify.
 
 ## Install
 ```
