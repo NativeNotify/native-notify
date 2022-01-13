@@ -43,7 +43,7 @@ export default function registerNNPushToken(appId, appToken) {
                 axios.post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
             });
             responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-                if(response.notification.request.content.data) {
+                if(Object.keys(response.notification.request.content.data) > 0) {
                     setData(response.notification.request.content.data);
                 } else {
                     setData({ dataObjectExample: "If you send a data object with your NativeNotify.com push notification, it will appear here once your user taps on your push notification. You can use this data object to do things like redirect your user to a specific screen other than the home screen." })

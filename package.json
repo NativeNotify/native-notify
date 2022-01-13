@@ -1,6 +1,6 @@
 {
   "name": "native-notify",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Expo Push Notifications (React Native) by https://NativeNotify.com. Send your first Expo push notification in less than a minute.",
   "main": "index.js",
   "scripts": {
