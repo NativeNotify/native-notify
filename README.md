@@ -28,7 +28,7 @@ Paste this code into your App.js component in the App function:
 ```
 let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
 ```
-<strong>You App function MUST be a hook function, or your push notifications will NOT work. This link explains how hooks work: https://reactjs.org/docs/hooks-intro.html</strong>
+<strong>You App function MUST be a hook function, or your push notifications will NOT work. This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a></strong>
 <br/><br/>
 You must go to https://NativeNotify.com to receive a free App Id and App Token, or the registerNNPushToken function will not work. 
 <br/><br/>
