@@ -35,7 +35,7 @@ export default function App() {
      ...
 }
 ```
-<br/>
+
 This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro.html" target="_blank">https://reactjs.org/docs/hooks-intro.html</a>
 
 ## Step 4: Paste
