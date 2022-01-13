@@ -24,13 +24,33 @@ Import registerNNPushToken in your App.js file:
 ```
 import registerNNPushToken from 'native-notify';
 ```
-Paste this code into your App.js file:
+Paste this code into your App.js component in the App function:
 ```
 let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
 ```
+<strong>You App function MUST be a hook function, you push notifications will NOT work.</strong>
+<br/><br/>
 You must go to https://NativeNotify.com to receive a free App Id and App Token, or the registerNNPushToken function will not work. 
 <br/><br/>
 It's free to sign up. No credit card required.
+
+## Example of an App.js component with native-notify code included:
+```
+import React, { useEffect } from 'react';
+import registerNNPushToken from 'native-notify';
+
+export default function App() {
+     let pushDataObject = registerNNPushToken(957, 'GMzZMrvzLpzcLMSbSE9xE8');
+
+     useEffect(() => {
+        console.log(pushDataObject);
+     }
+     
+     return (
+        ...
+     )
+}
+```
 
 ## Use
 The registerNNPushToken will register your user's Native Notify push notification token and will return a data object. You can then send your users push notifications in the https://NativeNotify.com push notification portal.
