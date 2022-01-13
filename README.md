@@ -6,7 +6,7 @@
 <br/>
 
 ## What is Native Notify?
-Native Notify is a React Native Expo Push Notifications service. Native Notify makes React Native Expo Push Notifications simple. With this native-notify plugin, you can send your first push notification in under 1 minute.
+Native Notify is a React Native Expo Push Notification service. Native Notify makes React Native Expo Push Notifications simple. With this native-notify plugin, you can send your first push notification in under 1 minute.
 <br/><br/>
 Sign up for https://NativeNotify.com for free. No credit card required.
 
