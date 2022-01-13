@@ -28,7 +28,7 @@ import registerNNPushToken from 'native-notify';
 ```
 
 ### Step 3: Make sure your App.js function is a hook function
-<strong>Your App function MUST be a hook function, or your push notifications will NOT work. Here is an example: </strong>
+<strong>Your App.js function MUST be a hook function, or your push notifications will NOT work. Here is an example: </strong>
 <br/>
 ```
 export default function App() {
