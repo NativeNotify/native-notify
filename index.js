@@ -53,16 +53,18 @@ export default function registerNNPushToken(appId, appToken) {
     return data;
 }
 
-export function registerIndieID(subID) {
+export async function registerIndieID(subID, appId, appToken) {
     if(Device.isDevice && Platform.OS !== 'web') {
         let token = (await Notifications.getExpoPushTokenAsync()).data;
         if(token) {
             axios.post(`https://app.nativenotify.com/api/indie/push/id`, {
-                subID: 'put your unique app user ID here as a string',
-                appId: 204,
-                appToken: 'HOSYikj3tmXxpRGJaOsk49',
+                subID: `${subID}`,
+                appId: appId,
+                appToken: `${appToken}`,
                 expoToken: token
-            });
+            })
+            .then(() => console.log('You successfully registered your Indie ID.'))
+            .console(err => console.log(err));
         } else {
             console.log('Setup Error: Please, follow the "Start Here" instructions BEFORE trying to use this registerIndieID function.')
         }
