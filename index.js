@@ -64,7 +64,7 @@ export async function registerIndieID(subID, appId, appToken) {
                 expoToken: token
             })
             .then(() => console.log('You successfully registered your Indie ID.'))
-            .console(err => console.log(err));
+            .catch(err => console.log(err));
         } else {
             console.log('Setup Error: Please, follow the "Start Here" instructions BEFORE trying to use this registerIndieID function.')
         }
