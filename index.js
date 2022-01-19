@@ -9,9 +9,10 @@ Notifications.setNotificationHandler({handleNotification: async () => ({ shouldS
 async function registerForPushNotificationsAsync() { 
     let token; 
     
-    if (Device.isDevice) { 
+    if (Device.isDevice && Platform.OS !== 'web') { 
         const { status: existingStatus } = await Notifications.getPermissionsAsync(); 
-        let finalStatus = existingStatus; if (existingStatus !== 'granted') { 
+        let finalStatus = existingStatus; 
+        if (existingStatus !== 'granted') { 
             const { status } = await Notifications.requestPermissionsAsync(); 
             finalStatus = status; 
         } 
@@ -50,4 +51,20 @@ export default function registerNNPushToken(appId, appToken) {
     });
 
     return data;
+}
+
+export function registerIndieID(subID) {
+    if(Device.isDevice && Platform.OS !== 'web') {
+        let token = (await Notifications.getExpoPushTokenAsync()).data;
+        if(token) {
+            axios.post(`https://app.nativenotify.com/api/indie/push/id`, {
+                subID: 'put your unique app user ID here as a string',
+                appId: 204,
+                appToken: 'HOSYikj3tmXxpRGJaOsk49',
+                expoToken: token
+            });
+        } else {
+            console.log('Setup Error: Please, follow the "Start Here" instructions BEFORE trying to use this registerIndieID function.')
+        }
+    }
 }
