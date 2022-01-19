@@ -41,7 +41,10 @@ export default function registerNNPushToken(appId, appToken) {
     useEffect(() => {
         if(Device.isDevice && Platform.OS !== 'web') {
             registerForPushNotificationsAsync().then(token => {
-                axios.post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
+                axios
+                    .post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
+                    .then(() => console.log('You can now send a push notification. You successfully registered your Native Notify Push Token!'))
+                    .catch(err => console.log(err));
             });
             responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
                 setData(response.notification.request.content.data);
