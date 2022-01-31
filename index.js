@@ -34,21 +34,18 @@ async function registerForPushNotificationsAsync() {
 }
 
 export default function registerNNPushToken(appId, appToken) {
-    const [data, setData] = useState({});
-
     const responseListener = useRef();
 
     useEffect(() => {
         if(Device.isDevice && Platform.OS !== 'web') {
-            registerForPushNotificationsAsync().then(token => {
-                axios
-                    .post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
-                    .then(() => console.log('You can now send a push notification. You successfully registered your Native Notify Push Token!'))
-                    .catch(err => console.log(err));
-            });
-            responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-                setData(response.notification.request.content.data);
-            });
+            registerForPushNotificationsAsync()
+                .then(token => {
+                    axios
+                        .post(`https://app.nativenotify.com/api/expo/key`, { appId: appId, appToken: appToken, expoToken: token })
+                        .then(() => console.log('You can now send a push notification. You successfully registered your Native Notify Push Token!'))
+                        .catch(err => console.log(err));            
+                });
+
             return () => { Notifications.removeNotificationSubscription(responseListener); };
         }
     });
@@ -79,11 +76,16 @@ export function getPushDataObject() {
 
     const responseListener = useRef();
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-        setData(response.notification.request.content.data);
-    });
+    useEffect(() => {
+        if(Device.isDevice && Platform.OS !== 'web') {
 
-    Notifications.removeNotificationSubscription(responseListener);
+            responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+                setData(response.notification.request.content.data);
+            });
+            
+            return () => { Notifications.removeNotificationSubscription(responseListener); };
+        }
+    });
 
     return data;
 }

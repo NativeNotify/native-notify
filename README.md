@@ -41,7 +41,7 @@ This link explains how hooks work: <a href="https://reactjs.org/docs/hooks-intro
 ### Step 4: Paste
 Paste this code into your App.js component in the App function:
 ```
-let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
+registerNNPushToken(yourAppId, 'yourAppToken');
 ```
 You must go to https://NativeNotify.com to receive a free App Id and App Token, or the registerNNPushToken function will not work. 
 <br/><br/>
@@ -49,15 +49,10 @@ It's free to sign up. No credit card required.
 
 ### Example of an App.js component with native-notify code included:
 ```
-import React, { useEffect } from 'react';
 import registerNNPushToken from 'native-notify';
 
 export default function App() {
-     let pushDataObject = registerNNPushToken(yourAppId, 'yourAppToken');
-
-     useEffect(() => {
-        console.log(pushDataObject);
-     });
+     registerNNPushToken(yourAppId, 'yourAppToken');
 
      return (
         ...
