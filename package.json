@@ -1,8 +1,9 @@
 {
   "name": "native-notify",
-  "version": "2.0.0",
+  "version": "3.0.3",
   "description": "Expo Push Notifications (React Native) by https://NativeNotify.com. Send your first Expo push notification in less than a minute.",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -35,8 +36,8 @@
   },
   "homepage": "https://github.com/NativeNotify/native-notify#readme",
   "dependencies": {
-    "axios": "^0.24.0",
-    "expo-device": "~4.1.0",
-    "expo-notifications": "~0.14.0"
+    "axios": "^1.2.1",
+    "expo-device": "~5.0.0",
+    "expo-notifications": "~0.17.0"
   }
 }

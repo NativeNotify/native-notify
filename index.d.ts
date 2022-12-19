@@ -1,0 +1,21 @@
+export default function registerNNPushToken(appId: any, appToken: any): void;
+export function registerIndieID(subID: any, appId: any, appToken: any): Promise<void>;
+export function getFollowMaster(masterSubID: any, appId: any, appToken: any): Promise<{
+    follower_indie_ids: any;
+    follower_count: any;
+    following_indie_ids: any;
+    following_count: any;
+}>;
+export function registerFollowMasterID(masterSubID: any, appId: any, appToken: any): Promise<"Follow Master Indie ID registered!" | "Follow Master Indie ID already registered.">;
+export function registerFollowerID(masterSubID: any, followerSubID: any, appId: any, appToken: any): Promise<"Follower Indie ID registered!" | "Follower Indie ID already registered.">;
+export function postFollowingID(masterSubID: any, followingSubID: any, appId: any, appToken: any): Promise<"Following Indie ID posted!" | "Following Indie ID already posted.">;
+export function unfollowMasterID(masterSubID: any, followerSubID: any, appId: any, appToken: any): Promise<"Follow Master unfollowed successfully!" | "FollowSubID is not following Follow Master.">;
+export function updateFollowersList(masterSubID: any, followingSubID: any, appId: any, appToken: any): Promise<"Follow Master ID removed from Follower List successfully!" | "Follow Master ID is not in the Follower List.">;
+export function deleteFollowMaster(appId: any, appToken: any, masterSubID: any): Promise<void>;
+export function getPushDataObject(): any;
+export function getPushDataInForeground(): any;
+export function getNotificationInbox(appId: any, appToken: any): Promise<any>;
+export function getUnreadNotificationInboxCount(appId: any, appToken: any): Promise<any>;
+export function getIndieNotificationInbox(subId: any, appId: any, appToken: any): Promise<any>;
+export function getUnreadIndieNotificationInboxCount(subId: any, appId: any, appToken: any): Promise<any>;
+export function deleteIndieNotificationInbox(subId: any, notificationId: any, appId: any, appToken: any): Promise<any>;
