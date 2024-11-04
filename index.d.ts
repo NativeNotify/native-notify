@@ -1,5 +1,6 @@
 export default function registerNNPushToken(appId: any, appToken: any): void;
 export function registerIndieID(subID: any, appId: any, appToken: any): Promise<void>;
+export function unregisterIndieDevice(subID: any, appId: any, appToken: any): Promise<void>;
 export function getFollowMaster(masterSubID: any, appId: any, appToken: any): Promise<{
     follower_indie_ids: any;
     follower_count: any;
