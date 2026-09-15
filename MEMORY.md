@@ -82,3 +82,50 @@ Commit `5891b11` (branch `master`, NOT pushed). Behavior-preserving refactor —
 
 - All of tonight's work is merged + pushed: v4.1.0 Notification Inbox (published earlier), v4.2.0 TypeScript build (published now), kanban cards in In Review, chips for docs/dashboard/chat-oss created.
 - Open follow-ups: native-notify-docs + native-notify-dashboard doc-update chips; chat-oss Launch trust-dialog bug chip; MEMORY.md remains git-tracked here.
+
+## 2026-09-15 15:08:16
+
+## 2026-09-15 — Native Notify deep-dive: 18 improvement suggestions added to the board (no code changes)
+
+Deliverable: a new **Suggestions** column on the "Native Notify" Kanban board with 18 specific cards (SDK ×7, Server ×7, Product ×2, Docs ×2). No files in this repo were modified.
+
+Sources used (for future re-verification):
+- SDK: `src/index.ts`, `src/inbox.tsx` (read fully), README, package.json.
+- Server: sibling repo **native-notify-app** (Express; the known folder is the SERVER, not a demo app) — `server/expoControllers/notificationsController.js`, `notificationInboxController.js`, `server/cronController/expoScheduledTasks.js`, `db/*.sql` (auto-loaded by basename via a massive-compatible layer in `server/helpers/db.js`), `PUSH-SEND-INCIDENT-NOTES.md`, `server/helpers/corsConfig.js`.
+- Dashboard repo (Next.js, `src/app/apps/[appId]/…`) and docs repo (MDX under `contents/docs/`).
+- Expo docs **via the Expo MCP tools** (`search_documentation`, `read_documentation`, `add_library`) — pages: push-notifications/{overview,setup,sending-notifications,receiving-notifications,faq}, versions/latest/sdk/notifications. Verified deprecations against expo/expo source via GitHub search.
+
+Key facts established (verified, do not re-derive):
+- Live npm versions (2026-09-15): `expo` 57.0.22, `expo-notifications` 57.0.18, `expo-constants` 57.0.18, `expo-device` 57.0.2, `expo-server-sdk` **7.2.0**, `native-notify` 4.2.0.
+- `shouldShowAlert` in `src/index.ts` L28-33 is deprecated (runtime warning: "Specify `shouldShowBanner` and/or `shouldShowList`"); SDK 57 still needs a handler, SDK 58+ shows foreground notifications by default. `Notifications.removeNotificationSubscription` is deprecated (expo/expo#36371) — used at src/index.ts L113/L304/L323 + fallback inbox.tsx L461.
+- `getPushDataObject()` misses the tap that cold-launches the app (needs `getLastNotificationResponse()`); `getUnreadNotificationInboxCount()` throws a TypeError off-device (`response` undefined); projectId access `Constants.expoConfig.extra.eas.projectId` has no fallback.
+- Server: indie sends are per-token sequential (`sendIndieNotificationLogic` L752+); receipts cron counts `ok` receipts only and discards error details; **indie `X-Total-Count` is the mass app count** (`setTotalCountHeader` → `get_app_notification_inbox_count.sql`) — confirmed bug; list fetches mark everything read (indie UPDATE, mass read-token insert); `expo-server-sdk` pinned ^3.15.0 while latest is 7.2.0 (v7 needs Node ≥22.12; droplet ran Node v20.10.0); no Expo access-token (enhanced push security) support; APNs path has the known `headers` implicit-global bug (L634); group sends per-token + native branches commented out.
+- Expo guidance worth keeping: check receipts ~15 min after send (cleared after 24 h); `DeviceNotRegistered` → stop sending; 600/s per-project rate limit; 100 msgs/request; multi-project requests rejected (`PUSH_TOO_MANY_EXPERIENCE_IDS`); message fields support subtitle/badge/ttl/interruptionLevel/categoryId/channelId/collapseId/mutableContent; enhanced push security = per-project access token (`new Expo({ accessToken })`, server-sdk ≥ v3.6).
+- Expo serves agent-readable docs (`.md` suffix on any docs URL + `/llms.txt`) — that's what the Expo MCP reads; mirrored as a suggestion for native-notify.
+
+Next step if the user picks any card: move it from Suggestions → To Do/In Progress and work it in the relevant repo (SDK cards = this repo; Server cards = native-notify-app; Docs cards = native-notify-docs / native-notify-dashboard).
+
+## 2026-09-15 16:22:52
+
+## 2026-09-15 — native-notify@5.0.0 RELEASED: the 7 SDK cards are done, published, and pushed
+
+**Published & verified**: `native-notify@5.0.0` — `npm view native-notify version` → 5.0.0; dist-tag latest → 5.0.0; published shasum `ff3a204af271cdeb6ae762befc0446bc6103ef2b` matches the local pack byte-for-byte (13 files, 24.3 kB tarball / 93.9 kB unpacked). Release commit `c83e2c9` pushed to master.
+
+**Versioning note**: MAJOR, not 4.3 — the five follow helpers (`registerFollowMasterID` / `registerFollowerID` / `postFollowingID` / `unfollowMasterID` / `updateFollowersList`) now return structured `NativeNotifyActionResult` objects (`{ success, status, message, error }`) instead of string sentinels (`message` keeps the old text; network failures no longer masquerade as "already registered"). Everything else is additive. README has an "Upgrading" section.
+
+**What shipped (the 7 SDK cards → 7 board cards in In Review)**
+- `shouldShowBanner` / `shouldShowList` notification handler (kills the deprecated `shouldShowAlert` warning); every subscription cleanup prefers `.remove()` over deprecated `removeNotificationSubscription`.
+- Cold-start taps: `useNativeNotifyPress<T>()` reads `getLastNotificationResponse()` once per process (then subscribes); `getPushDataObject` wraps it.
+- Registration hardening: projectId fallback chain with a clear error, 10s timeouts, 1 retry, `{ onRegistered, onError, watchTokenRotation }` options, `addPushTokenListener` re-registration, Expo Go Android detection, exported `registerForPushNotificationsAsync` returning `PushTokenResult`.
+- Inbox fixes: `getUnreadNotificationInboxCount` returns 0 instead of TypeError off-device; NEW `getNotificationInboxPage` / `getIndieNotificationInboxPage` return `{ rows, total }` from X-Total-Count; the hook uses `computeHasMore` (exact with a total; empty page always ends paging).
+- Badge sync: `syncBadge` (default true) → `Notifications.setBadgeCountAsync(unreadCount)`.
+- Config: `src/context.tsx` — `NativeNotify.init` (module-level, for plain functions) + `<NativeNotifyProvider>` + `useNativeNotify()`; appId/appToken optional everywhere (args → context → init).
+- Tests/CI: `src/inboxUtils.ts` (pure helpers), `test/inboxUtils.test.ts` (9 tests via `tsx --test`), `test/consumer.ts` strict compile fixture, `tsconfig.test.json`, `.github/workflows/ci.yml`. Scripts: `typecheck`, `test`, `prepublishOnly = build && test`. New devDeps: tsx, @types/node.
+
+**Verification actually run** (⚠️ NO device/simulator test): tsc --noEmit ×2 (src + strict consumer fixture), 9 unit tests, build, `node --check` on both dist files, `npm pack --dry-run` (13 files; no src/tmp/MEMORY), CJS smoke `tmp/scratch/smoke-dist.js` (stubs react/react-native/expo-notifications/axios; proves dist loads, exports wire up, handler uses new fields, register flow reports). On-device behavior (badge, cold-start tap) still needs a consumer-app run.
+
+**Publish recipe re-confirmed** (no user terminal needed): `script -q tmp/scratch/publish-pty-v5.log npm publish` as a BACKGROUND command → grep the pty transcript for the `https://www.npmjs.com/auth/cli/...` URL → write to `tmp/scratch/npm-auth-url.txt` (never print it) → `open` it; the user approves in the browser and npm finishes by itself. A plain foreground `npm publish` still dies with EOTP. Sandbox note: npm's allow-scripts policy logs an esbuild postinstall warning, but tsx works fine.
+
+**New server finding (bonus, found while building v5)**: `updateFollowersList` (native-notify-app `server/expoControllers/followPushController.js` L186–217) sends NO response when the sub is not in the list — the request hangs. SDK v5 now times out at 10s and maps it to `status: 'not_found'`; the server chip "inbox API fixes + follow-endpoint hang" carries the real fix.
+
+**Board + chips**: 7 SDK cards → In Review; the other 11 cards → To Do; Suggestions column is now empty. 11 correct Start chips created (7× native-notify-app, 2× native-notify-docs, 2× native-notify-dashboard). ⚠️ GOTCHA: `propose_task` WITHOUT the `project` arg targets the CURRENT root — an accidental first batch of 11 chips points at this SDK repo instead of the target repos; those duplicates need dismissing (no chip-delete tool exists). Recommended server order (same-file conflicts): batched sends → token hygiene → receipts → inbox API → Node/v7 → analytics → rich fields; docs/dashboard chips are parallel-safe; the dashboard UI chip waits on the server analytics + rich-fields chips.
