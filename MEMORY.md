@@ -67,3 +67,18 @@ Commit `5891b11` (branch `master`, NOT pushed). Behavior-preserving refactor —
 - 🔴 TO RELEASE: bump `version` to 4.2.0 first (currently 4.1.0 == published 4.1.0), then run `npm publish` — needs the user's terminal for the npm 2FA/web-OTP step. Optional follow-up: add a `prepare` script if GitHub-install consumers ever matter (dist is not committed).
 - 🔴 MACHINE GOTCHA (ChatOSS itself): on 2026-09-15 a Launch-mode spawn of a FRESH worktree with Claude Code died at the folder-trust dialog ("Yes, I trust this folder" / "No, exit") — the app's auto-answer races the dialog and the spawn is reported as "exited immediately (code 1). Install the claude CLI…" (wrong; claude is installed at ~/.local/bin/claude, native install). Failed spawns are invisible in the Terminals panel. WORKAROUND that works here: pre-seed `hasTrustDialogAccepted: true` for the repo root (+ `.chatoss` + `.chatoss/worktrees`) in `~/.claude.json` (backup: `~/.claude.json.before-chatoss-pretrust.bak`) and spawn with `worktree:false`. A bug-report chip was created for the `chat-oss` project to fix the app side.
 - Follow-ups already queued as chips: native-notify-docs + native-notify-dashboard doc updates (from the v4.1.0 inbox task).
+
+## 2026-09-15 14:47:53
+
+## native-notify@4.2.0 (TypeScript build) is PUBLISHED to npm (2026-09-15)
+
+- `npm view native-notify version` → 4.2.0, dist-tag latest → 4.2.0. Published shasum `6fda89a503822d322993b792e06f5ce796f96c31` matches the locally verified pack exactly (9 files, 62,230 bytes unpacked).
+- How the 2FA wall was beaten from the agent shell (reusable recipe): run `script -q tmp/scratch/publish-pty.log npm publish` as a BACKGROUND command (PTY gives npm its interactive web-OTP flow — it polls the registry `/v1/done` endpoint while showing "Press ENTER to open in the browser..."). The auth URL lands in the pty transcript + `~/.npm/_logs/`; extract it with `grep -hoE 'https://www\.npmjs\.com/auth/cli/[A-Za-z0-9_-]+'` and `open "$(cat tmp/scratch/npm-auth-url.txt)"` to pop the browser. The user approves; npm finishes the publish on its own — no ENTER needed.
+- Release commits: `c0cf834` (bump 4.2.0) pushed to master.
+- Pre-publish verification battery (all green): fresh `rm -rf dist && npm run build`, `node --check` both dist files, `__esModule`/`exports.default` interop markers, consumer-style strict `tsc` compile of a scratch consumer (default + named imports, components, hook, return types — CONSUMER_TYPES_OK), esbuild bundle, `npm pack` contents (dist + assets + README + package.json; no src/tmp/MEMORY).
+- NOTE for next releases: npm's web-OTP flow worked non-interactively this way; do NOT ask the user to run npm publish manually unless this breaks — and never put the auth URL in plain chat (redaction is automatic; keep it in the scratch file + `open`).
+
+## Session wrap (2026-09-15 evening)
+
+- All of tonight's work is merged + pushed: v4.1.0 Notification Inbox (published earlier), v4.2.0 TypeScript build (published now), kanban cards in In Review, chips for docs/dashboard/chat-oss created.
+- Open follow-ups: native-notify-docs + native-notify-dashboard doc-update chips; chat-oss Launch trust-dialog bug chip; MEMORY.md remains git-tracked here.
