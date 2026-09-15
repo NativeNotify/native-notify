@@ -20,3 +20,84 @@ export function getUnreadNotificationInboxCount(appId: any, appToken: any): Prom
 export function getIndieNotificationInbox(subId: any, appId: any, appToken: any, take: any, skip: any): Promise<any>;
 export function getUnreadIndieNotificationInboxCount(subId: any, appId: any, appToken: any): Promise<any>;
 export function deleteIndieNotificationInbox(subId: any, notificationId: any, appId: any, appToken: any): Promise<any>;
+
+export interface InboxNotification {
+    notification_id: any;
+    date?: any;
+    title?: any;
+    message?: any;
+    pushData?: any;
+    date_sent?: any;
+    push_data?: any;
+    [key: string]: any;
+}
+
+export interface NotificationInboxTheme {
+    icon?: string;
+    dot?: string;
+    badgeText?: string;
+    background?: string;
+    headerBackground?: string;
+    title?: string;
+    text?: string;
+    mutedText?: string;
+    border?: string;
+    card?: string;
+    accent?: string;
+    delete?: string;
+    emptyTitle?: string;
+    emptyText?: string;
+}
+
+export interface UseNotificationInboxOptions {
+    appId: number | string;
+    appToken: string;
+    mode?: "mass" | "indie";
+    subId?: number | string;
+    take?: number;
+}
+
+export interface UseNotificationInboxResult {
+    notifications: InboxNotification[];
+    unreadCount: number;
+    loading: boolean;
+    refreshing: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
+    error: string | null;
+    openInbox: () => void;
+    refresh: () => void;
+    refreshUnread: () => Promise<void>;
+    loadMore: () => Promise<void>;
+    deleteNotification: (notificationId: number | string) => Promise<boolean>;
+}
+
+export interface NotificationInboxScreenProps {
+    appId: number | string;
+    appToken: string;
+    mode?: "mass" | "indie";
+    subId?: number | string;
+    take?: number;
+    colors?: NotificationInboxTheme;
+    title?: string;
+    emptyText?: string;
+    allowDelete?: boolean;
+    onNotificationPress?: (notification: InboxNotification) => void;
+    visible?: boolean;
+    onClose?: () => void;
+    inbox?: UseNotificationInboxResult;
+}
+
+export interface NotificationInboxBellProps extends NotificationInboxScreenProps {
+    onOpen?: () => void;
+    showCount?: boolean;
+    maxCount?: number;
+    renderIcon?: (args: { unreadCount: number; color: string }) => any;
+    iconSize?: number;
+    iconStyle?: any;
+    containerStyle?: any;
+}
+
+export function useNotificationInbox(options: UseNotificationInboxOptions): UseNotificationInboxResult;
+export function NotificationInboxScreen(props: NotificationInboxScreenProps): any;
+export function NotificationInboxBell(props: NotificationInboxBellProps): any;

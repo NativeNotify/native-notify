@@ -352,3 +352,10 @@ export async function deleteIndieNotificationInbox(subId, notificationId, appId,
 
     return response.data;
 }
+
+// Prebuilt Notification Inbox components (bell icon + full-screen inbox + data hook).
+export {
+    NotificationInboxBell,
+    NotificationInboxScreen,
+    useNotificationInbox,
+} from './inbox';
