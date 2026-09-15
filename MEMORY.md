@@ -28,3 +28,15 @@ This applies to clarifying questions (ask_question), decision points, plan revie
 - RN 0.86 gotcha: core `SafeAreaView` logs a runtime deprecation warning (will be removed) — `inbox.js` avoids it and uses `StatusBar.currentHeight` (Android) / `Constants.statusBarHeight` (iOS) instead.
 - Packaging: `package.json` now has a `files` allowlist (`index.js`, `index.d.ts`, `inbox.js`, `assets/`) so `MEMORY.md` and `tmp/` can never ship to npm. `MEMORY.md` is git-tracked in this repo (like the server repo; the dashboard repo does not track it).
 - Cross-repo follow-ups queued as task chips: docs-site pages (`native-notify-docs`) and in-app Expo guide sections (`native-notify-dashboard`). The dashboard repo can't patch other repos with file tools (its MEMORY.md) — those chips edit their own repos only.
+
+## 2026-09-15 13:33:01
+
+## RESOLVED — native-notify@4.1.0 is PUBLISHED to npm (2026-09-15)
+
+Update to the "publish pending re-auth" note above: the publish COMPLETED. Verified live:
+- `npm view native-notify version` → `4.1.0`; dist-tags latest → 4.1.0.
+- Published tarball shasum `94a673111c8dbbbffb80b272eec875881b2125e0` matches the locally verified artifact byte-for-byte (8 files, 53,251 bytes unpacked).
+
+How it was unblocked: the stale `~/.npmrc` token was replaced by a fresh `npm login` (user-side), and the actual publish was run by the user in their terminal because the account's 2FA uses npm's web-OTP flow (`EOTP`) which a non-interactive shell cannot complete. For future releases, either the user runs `npm publish` themselves, or they create an npm **Automation** access token (bypasses 2FA for publishes) and we store it in `~/.npmrc` so agents can release directly.
+
+Also done this session: README/docs-facing work queued as task chips for `native-notify-docs` and `native-notify-dashboard`; kanban card moved to In Review with the full log.
