@@ -84,7 +84,16 @@ export default function registerNNPushToken(appId, appToken) {
                         .catch(err => console.log(err));            
                 });
 
-            return () => { Notifications.removeNotificationSubscription(responseListener); };
+            responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+                console.log(response);
+            });
+            
+            return () => {
+                responseListener.current &&
+                    Notifications.removeNotificationSubscription(responseListener.current);
+            };
+
+            // return () => { Notifications.removeNotificationSubscription(responseListener); };
         }
     }, []);
 }
@@ -269,7 +278,7 @@ export function getPushDataObject() {
             
             return () => { Notifications.removeNotificationSubscription(responseListener.current); };
         }
-    });
+    }, []);
 
     return data;
 }
@@ -288,7 +297,7 @@ export function getPushDataInForeground() {
             
             return () => { Notifications.removeNotificationSubscription(notificationListener.current); };
         }
-    });
+    }, []);
 
     return data;
 }
@@ -302,7 +311,7 @@ export async function getNotificationInbox(appId, appToken, take, skip) {
             await axios.post(`https://app.nativenotify.com/api/notification/inbox/read`, {
                 appId,
                 appToken,
-                expoToken: token
+                expoToken: token,
             })
         }
     } 

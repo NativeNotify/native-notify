@@ -15,8 +15,8 @@ export function updateFollowersList(masterSubID: any, followingSubID: any, appId
 export function deleteFollowMaster(appId: any, appToken: any, masterSubID: any): Promise<void>;
 export function getPushDataObject(): any;
 export function getPushDataInForeground(): any;
-export function getNotificationInbox(appId: any, appToken: any): Promise<any>;
+export function getNotificationInbox(appId: any, appToken: any, take: any, skip: any): Promise<any>;
 export function getUnreadNotificationInboxCount(appId: any, appToken: any): Promise<any>;
-export function getIndieNotificationInbox(subId: any, appId: any, appToken: any): Promise<any>;
+export function getIndieNotificationInbox(subId: any, appId: any, appToken: any, take: any, skip: any): Promise<any>;
 export function getUnreadIndieNotificationInboxCount(subId: any, appId: any, appToken: any): Promise<any>;
 export function deleteIndieNotificationInbox(subId: any, notificationId: any, appId: any, appToken: any): Promise<any>;
