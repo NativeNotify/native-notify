@@ -2,15 +2,15 @@
   "name": "native-notify",
   "version": "4.1.0",
   "description": "Expo Push Notifications (React Native) by https://NativeNotify.com. Send your first Expo push notification in less than a minute.",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "index.js",
-    "index.d.ts",
-    "inbox.js",
-    "assets/"
+    "dist",
+    "assets"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -50,5 +50,9 @@
     "expo-notifications": "*",
     "react": ">=16.8.0",
     "react-native": ">=0.60.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^5.9.3"
   }
 }

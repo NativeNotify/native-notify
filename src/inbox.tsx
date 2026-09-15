@@ -60,6 +60,98 @@ import {
     getUnreadIndieNotificationInboxCount,
     deleteIndieNotificationInbox,
 } from './index';
+import type { InboxNotification } from './index';
+
+/**
+ * Keys describing the theme. Every color the components use is one of these,
+ * so a partial override is enough to reskin the whole inbox.
+ */
+export interface NotificationInboxTheme {
+    icon?: string;
+    dot?: string;
+    badgeText?: string;
+    background?: string;
+    headerBackground?: string;
+    title?: string;
+    text?: string;
+    mutedText?: string;
+    border?: string;
+    card?: string;
+    accent?: string;
+    delete?: string;
+    emptyTitle?: string;
+    emptyText?: string;
+}
+
+/** Inbox mode: app-wide ("mass") or per-user ("indie"). */
+export type NotificationInboxMode = 'mass' | 'indie';
+
+/**
+ * Options accepted by useNotificationInbox().
+ *
+ * Input types stay wide on purpose (`number | string` for the ids) so any
+ * value a consumer already passes keeps compiling.
+ */
+export interface UseNotificationInboxOptions {
+    appId: number | string;
+    appToken: string;
+    mode?: NotificationInboxMode;
+    subId?: number | string;
+    take?: number;
+    /**
+     * Internal: renders the hook inert (no fetching, no subscriptions). Used by
+     * NotificationInboxBell to keep the hook call unconditional when the screen
+     * it renders is given an already-built inbox instance.
+     */
+    inert?: boolean;
+}
+
+/** Everything useNotificationInbox() returns. */
+export interface UseNotificationInboxResult {
+    notifications: InboxNotification[];
+    unreadCount: number;
+    loading: boolean;
+    refreshing: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
+    error: string | null;
+    openInbox: () => void;
+    refresh: () => void;
+    refreshUnread: () => Promise<void>;
+    loadMore: () => Promise<void>;
+    deleteNotification: (notificationId: number | string) => Promise<boolean>;
+}
+
+/** Props for NotificationInboxScreen. */
+export interface NotificationInboxScreenProps {
+    appId: number | string;
+    appToken: string;
+    mode?: NotificationInboxMode;
+    subId?: number | string;
+    take?: number;
+    colors?: NotificationInboxTheme;
+    title?: string;
+    emptyText?: string;
+    allowDelete?: boolean;
+    onNotificationPress?: (notification: InboxNotification) => void;
+    visible?: boolean;
+    onClose?: () => void;
+    /** Internal: reuse a useNotificationInbox() instance built by the caller. */
+    inbox?: UseNotificationInboxResult;
+}
+
+/** Props for NotificationInboxBell — screen props plus the bell-specific ones. */
+export interface NotificationInboxBellProps extends NotificationInboxScreenProps {
+    onOpen?: () => void;
+    showCount?: boolean;
+    maxCount?: number;
+    renderIcon?: (args: { unreadCount: number; color: string }) => any;
+    iconSize?: number;
+    iconStyle?: any;
+    containerStyle?: any;
+}
+
+type Theme = NotificationInboxTheme & { [key: string]: string | undefined };
 
 const LIGHT_THEME = {
     icon: '#111827',
@@ -97,11 +189,11 @@ const DARK_THEME = {
 
 // An inert config for the second hook instance a Bell renders inside its
 // screen: it keeps the hook call unconditional without doing any work.
-const INERT_CONFIG = { inert: true };
+const INERT_CONFIG: any = { inert: true };
 
-const missingSubId = (subId) => subId === undefined || subId === null || subId === '';
+const missingSubId = (subId: number | string | undefined | null) => subId === undefined || subId === null || subId === '';
 
-function useInboxTheme(overrides) {
+function useInboxTheme(overrides?: NotificationInboxTheme): Theme {
     const scheme = useColorScheme();
     return useMemo(() => {
         const base = scheme === 'dark' ? DARK_THEME : LIGHT_THEME;
@@ -115,7 +207,7 @@ function useInboxTheme(overrides) {
 // and only fall back to Date for anything else.
 const SERVER_DATE_RE = /^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?$/i;
 
-function parseDateValue(raw) {
+function parseDateValue(raw: string): Date | null {
     const match = SERVER_DATE_RE.exec(raw);
     if (match) {
         let hours = match[4] ? parseInt(match[4], 10) : 0;
@@ -135,7 +227,7 @@ function parseDateValue(raw) {
     return Number.isNaN(fallback.getTime()) ? null : fallback;
 }
 
-function formatDate(value) {
+function formatDate(value: any): string {
     if (!value) return '';
     const raw = String(value);
     const date = parseDateValue(raw);
@@ -155,7 +247,7 @@ function formatDate(value) {
     }
 }
 
-function describeError(e) {
+function describeError(e: any): string {
     const fallback = "Couldn't load notifications. Check your connection and try again.";
     if (!e) return fallback;
     const data = e.response && e.response.data;
@@ -173,34 +265,34 @@ function describeError(e) {
  * The list screen itself should call inbox.openInbox() when it becomes visible:
  * fetching the inbox marks the notifications as read on the server.
  */
-export function useNotificationInbox(options) {
-    const cfg = options || {};
+export function useNotificationInbox(options: UseNotificationInboxOptions): UseNotificationInboxResult {
+    const cfg: UseNotificationInboxOptions = options || ({} as UseNotificationInboxOptions);
     const inert = !!cfg.inert;
     const { appId, appToken, mode = 'mass', subId, take = 20 } = cfg;
     const inboxMode = mode === 'indie' ? 'indie' : 'mass';
 
-    const [notifications, setNotifications] = useState([]);
+    const [notifications, setNotifications] = useState<InboxNotification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState<string | null>(null);
 
     const mountedRef = useRef(true);
     const inFlightRef = useRef(false);
     const skipRef = useRef(0);
     const hasMoreRef = useRef(true);
-    const rowsRef = useRef([]);
-    const configRef = useRef({});
+    const rowsRef = useRef<InboxNotification[]>([]);
+    const configRef = useRef<any>({});
     configRef.current = { appId, appToken, inboxMode, subId, take };
 
-    const setRows = useCallback((rows) => {
+    const setRows = useCallback((rows: InboxNotification[]) => {
         rowsRef.current = rows;
         if (mountedRef.current) setNotifications(rows);
     }, []);
 
-    const setMore = useCallback((more) => {
+    const setMore = useCallback((more: boolean) => {
         hasMoreRef.current = more;
         if (mountedRef.current) setHasMore(more);
     }, []);
@@ -232,7 +324,7 @@ export function useNotificationInbox(options) {
         }
     }, [inert]);
 
-    const loadFirstPage = useCallback(async ({ spinner = false } = {}) => {
+    const loadFirstPage = useCallback(async ({ spinner = false }: { spinner?: boolean } = {}) => {
         if (inert) return;
         const current = getConfig();
         if (!current || inFlightRef.current) return;
@@ -276,7 +368,7 @@ export function useNotificationInbox(options) {
                 ? await getIndieNotificationInbox(current.subId, current.appId, current.appToken, current.take, skip)
                 : await getNotificationInbox(current.appId, current.appToken, current.take, skip);
             const rows = Array.isArray(page) ? page : [];
-            const seen = {};
+            const seen: { [key: string]: boolean } = {};
             const next = rowsRef.current.slice();
             next.forEach((row) => {
                 if (row && row.notification_id !== undefined) seen[row.notification_id] = true;
@@ -309,7 +401,7 @@ export function useNotificationInbox(options) {
     // Indie only. Optimistically removes the row and puts it back on failure.
     // Mass delete is an admin action that removes the notification for every
     // user, so it is not exposed here.
-    const deleteNotification = useCallback(async (notificationId) => {
+    const deleteNotification = useCallback(async (notificationId: number | string) => {
         if (inert) return false;
         const current = getConfig();
         if (!current || current.inboxMode !== 'indie') return false;
@@ -351,10 +443,10 @@ export function useNotificationInbox(options) {
             return;
         }
         refreshUnread();
-        const appStateSub = AppState.addEventListener('change', (state) => {
+        const appStateSub = AppState.addEventListener('change', (state: string) => {
             if (state === 'active') refreshUnread();
         });
-        let notifSub = null;
+        let notifSub: any = null;
         try {
             notifSub = Notifications.addNotificationReceivedListener(() => {
                 refreshUnread();
@@ -389,7 +481,15 @@ export function useNotificationInbox(options) {
     };
 }
 
-function NotificationRow({ item, theme, canDelete, onPress, onDelete }) {
+interface NotificationRowProps {
+    item: InboxNotification;
+    theme: NotificationInboxTheme;
+    canDelete: boolean;
+    onPress?: (notification: InboxNotification) => void;
+    onDelete: (notificationId: number | string) => Promise<boolean>;
+}
+
+function NotificationRow({ item, theme, canDelete, onPress, onDelete }: NotificationRowProps) {
     // The server maps date_sent -> date and push_data -> pushData in every
     // inbox response; the snake_case fallbacks cover any older/raw payloads.
     const dateText = formatDate(item ? item.date || item.date_sent : '');
@@ -445,7 +545,7 @@ function NotificationRow({ item, theme, canDelete, onPress, onDelete }) {
  * - onNotificationPress(notification) — called when a row is tapped.
  * - inbox             — internal: reuse a useNotificationInbox() instance.
  */
-export function NotificationInboxScreen(props) {
+export function NotificationInboxScreen(props: NotificationInboxScreenProps): any {
     const {
         inbox: providedInbox,
         visible,
@@ -460,7 +560,7 @@ export function NotificationInboxScreen(props) {
         emptyText = "You're all caught up",
         allowDelete,
         onNotificationPress,
-    } = props || {};
+    } = props || {} as NotificationInboxScreenProps;
 
     const inboxMode = mode === 'indie' ? 'indie' : 'mass';
     const ownInbox = useNotificationInbox(providedInbox ? INERT_CONFIG : { appId, appToken, mode, subId, take });
@@ -510,7 +610,7 @@ export function NotificationInboxScreen(props) {
         body = (
             <View style={styles.centered}>
                 <Image
-                    source={require('./assets/bell.png')}
+                    source={require('../assets/bell.png')}
                     style={[styles.emptyIcon, { tintColor: theme.mutedText }]}
                     resizeMode="contain"
                 />
@@ -522,8 +622,8 @@ export function NotificationInboxScreen(props) {
         body = (
             <FlatList
                 data={rows}
-                keyExtractor={(item) => String(item && item.notification_id)}
-                renderItem={({ item }) => (
+                keyExtractor={(item: InboxNotification) => String(item && item.notification_id)}
+                renderItem={({ item }: { item: InboxNotification }) => (
                     <NotificationRow
                         item={item}
                         theme={theme}
@@ -593,7 +693,7 @@ export function NotificationInboxScreen(props) {
  * - iconSize          — bell size (default 24).
  * - iconStyle, containerStyle — styling escape hatches.
  */
-export function NotificationInboxBell(props) {
+export function NotificationInboxBell(props: NotificationInboxBellProps): any {
     const {
         onOpen,
         showCount = false,
@@ -603,7 +703,7 @@ export function NotificationInboxBell(props) {
         iconStyle,
         containerStyle,
         ...screenProps
-    } = props || {};
+    } = props || {} as NotificationInboxBellProps;
 
     const [visible, setVisible] = useState(false);
     const inbox = useNotificationInbox({
@@ -630,7 +730,7 @@ export function NotificationInboxBell(props) {
         ? renderIcon({ unreadCount: count, color: theme.icon })
         : (
             <Image
-                source={require('./assets/bell.png')}
+                source={require('../assets/bell.png')}
                 style={[{ width: iconSize, height: iconSize, tintColor: theme.icon }, iconStyle]}
                 resizeMode="contain"
             />

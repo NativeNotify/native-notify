@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2019", "DOM"],
+    "jsx": "react",
+
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "removeComments": false,
+
+    // Permissive interop: the React Native / Expo toolchain (Metro + Babel)
+    // treats default imports of CommonJS modules the way esModuleInterop does,
+    // so the emitted requires must match that or `import Constants from
+    // 'expo-constants'` would compile to the wrong thing.
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    // The public surface is what matters here, and it is kept deliberately wide
+    // for compatibility. Internal strictness is off so the emitted .d.ts is
+    // exactly as permissive as the hand-written index.d.ts it replaces.
+    "strict": false
+  },
+  "include": ["src/**/*"]
+}
