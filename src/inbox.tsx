@@ -19,15 +19,18 @@
  *   }}
  *
  * Modes:
- * - mode="mass" (default): app-wide notifications. Read state needs a real
- *   device (it uses the device's Expo push token), so on web / simulators the
- *   bell simply never shows the dot.
+ * - mode="mass" (default): app-wide notifications. Read state needs a device
+ *   that can mint an Expo push token (real device, Android emulator with
+ *   Google Play services, or iOS Simulator on Xcode 14+); the dot stays hidden
+ *   on web.
  * - mode="indie": per-user notifications (subId required). Works in Expo Go,
  *   on simulators and on web.
  *
  * Behavior notes:
  * - Opening the inbox marks the notifications as read on the server (existing
  *   API behavior in both modes), so the red dot clears once it opens.
+ * - The unread count is synced to the app icon badge
+ *   (Notifications.setBadgeCountAsync); opt out with syncBadge={false}.
  * - Deleting is only available in "indie" mode. The mass delete endpoint
  *   removes a notification from EVERY user's inbox (it is an admin action on
  *   the dashboard), so it is intentionally not wired into this component.
@@ -54,13 +57,15 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
 import {
-    getNotificationInbox,
+    getNotificationInboxPage,
     getUnreadNotificationInboxCount,
-    getIndieNotificationInbox,
+    getIndieNotificationInboxPage,
     getUnreadIndieNotificationInboxCount,
     deleteIndieNotificationInbox,
 } from './index';
 import type { InboxNotification } from './index';
+import { useNativeNotify } from './context';
+import { computeHasMore, describeError, formatDate } from './inboxUtils';
 
 /**
  * Keys describing the theme. Every color the components use is one of these,
@@ -93,11 +98,14 @@ export type NotificationInboxMode = 'mass' | 'indie';
  * value a consumer already passes keeps compiling.
  */
 export interface UseNotificationInboxOptions {
-    appId: number | string;
-    appToken: string;
+    /** Defaults to NativeNotify.init() / <NativeNotifyProvider> config. */
+    appId?: number | string;
+    appToken?: string;
     mode?: NotificationInboxMode;
     subId?: number | string;
     take?: number;
+    /** Sync the unread count to the app icon badge (default true). */
+    syncBadge?: boolean;
     /**
      * Internal: renders the hook inert (no fetching, no subscriptions). Used by
      * NotificationInboxBell to keep the hook call unconditional when the screen
@@ -124,11 +132,14 @@ export interface UseNotificationInboxResult {
 
 /** Props for NotificationInboxScreen. */
 export interface NotificationInboxScreenProps {
-    appId: number | string;
-    appToken: string;
+    /** Defaults to NativeNotify.init() / <NativeNotifyProvider> config. */
+    appId?: number | string;
+    appToken?: string;
     mode?: NotificationInboxMode;
     subId?: number | string;
     take?: number;
+    /** Sync the unread count to the app icon badge (default true). */
+    syncBadge?: boolean;
     colors?: NotificationInboxTheme;
     title?: string;
     emptyText?: string;
@@ -201,61 +212,8 @@ function useInboxTheme(overrides?: NotificationInboxTheme): Theme {
     }, [scheme, overrides]);
 }
 
-// The server stores date_sent exactly as the sender provided it. Live data
-// uses "M-D-YYYY H:MMAM/PM" (e.g. "8-28-2026 6:53AM"), which JS engines parse
-// inconsistently (Hermes returns Invalid Date), so parse that shape directly
-// and only fall back to Date for anything else.
-const SERVER_DATE_RE = /^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?$/i;
-
-function parseDateValue(raw: string): Date | null {
-    const match = SERVER_DATE_RE.exec(raw);
-    if (match) {
-        let hours = match[4] ? parseInt(match[4], 10) : 0;
-        const isPM = match[6] && match[6].toUpperCase() === 'PM';
-        if (isPM && hours < 12) hours += 12;
-        if (!isPM && hours === 12) hours = 0;
-        const parsed = new Date(
-            parseInt(match[3], 10),
-            parseInt(match[1], 10) - 1,
-            parseInt(match[2], 10),
-            hours,
-            match[5] ? parseInt(match[5], 10) : 0
-        );
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-    const fallback = new Date(raw);
-    return Number.isNaN(fallback.getTime()) ? null : fallback;
-}
-
-function formatDate(value: any): string {
-    if (!value) return '';
-    const raw = String(value);
-    const date = parseDateValue(raw);
-    if (!date) return raw; // unknown format: show it as-is
-    try {
-        const hasTime = /\d{1,2}:\d{2}/.test(raw);
-        const sameYear = date.getFullYear() === new Date().getFullYear();
-        return date.toLocaleString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            year: sameYear ? undefined : 'numeric',
-            hour: hasTime ? 'numeric' : undefined,
-            minute: hasTime ? '2-digit' : undefined,
-        });
-    } catch (e) {
-        return raw;
-    }
-}
-
-function describeError(e: any): string {
-    const fallback = "Couldn't load notifications. Check your connection and try again.";
-    if (!e) return fallback;
-    const data = e.response && e.response.data;
-    // The server sends plain-text messages for plan / permission problems.
-    if (typeof data === 'string' && data.trim() && data.length < 240) return data.trim();
-    if (typeof e.message === 'string' && e.message) return e.message;
-    return fallback;
-}
+// Date/number/error helpers live in ./inboxUtils so they can be unit-tested
+// in plain Node (see test/inboxUtils.test.ts).
 
 /**
  * Headless data hook behind NotificationInboxBell / NotificationInboxScreen.
@@ -268,7 +226,17 @@ function describeError(e: any): string {
 export function useNotificationInbox(options: UseNotificationInboxOptions): UseNotificationInboxResult {
     const cfg: UseNotificationInboxOptions = options || ({} as UseNotificationInboxOptions);
     const inert = !!cfg.inert;
-    const { appId, appToken, mode = 'mass', subId, take = 20 } = cfg;
+    const {
+        appId: optionAppId,
+        appToken: optionAppToken,
+        mode = 'mass',
+        subId,
+        take = 20,
+        syncBadge = true,
+    } = cfg;
+    const providerConfig = useNativeNotify();
+    const appId = optionAppId ?? providerConfig.appId;
+    const appToken = optionAppToken ?? providerConfig.appToken;
     const inboxMode = mode === 'indie' ? 'indie' : 'mass';
 
     const [notifications, setNotifications] = useState<InboxNotification[]>([]);
@@ -297,6 +265,23 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         if (mountedRef.current) setHasMore(more);
     }, []);
 
+    // Keep the OS app-icon badge in sync with the unread count (iOS + Android
+    // show it where supported). setBadgeCountAsync is fire-and-forget.
+    const applyUnreadCount = useCallback((count: number) => {
+        if (!mountedRef.current) return;
+        setUnreadCount(count);
+        if (syncBadge === false) return;
+        try {
+            const setBadgeCount = (Notifications as any).setBadgeCountAsync;
+            if (typeof setBadgeCount === 'function') {
+                const pending = setBadgeCount(count);
+                if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+            }
+        } catch (e) {
+            // Badge API unavailable in this environment.
+        }
+    }, [syncBadge]);
+
     const getConfig = () => {
         const current = configRef.current;
         if (!current.appId || !current.appToken) return null;
@@ -316,13 +301,13 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
                 count = await getUnreadNotificationInboxCount(current.appId, current.appToken);
             }
             const n = Number(count);
-            if (mountedRef.current && !Number.isNaN(n)) setUnreadCount(Math.max(0, Math.floor(n)));
+            if (!Number.isNaN(n)) applyUnreadCount(Math.max(0, Math.floor(n)));
         } catch (e) {
             // Counting can fail by design on simulators / web / Expo Go (no push
             // token) or while offline. Fail silent and keep the last known count
             // (which starts at 0, so the dot simply stays hidden).
         }
-    }, [inert]);
+    }, [inert, applyUnreadCount]);
 
     const loadFirstPage = useCallback(async ({ spinner = false }: { spinner?: boolean } = {}) => {
         if (inert) return;
@@ -336,15 +321,15 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         }
         try {
             const page = current.inboxMode === 'indie'
-                ? await getIndieNotificationInbox(current.subId, current.appId, current.appToken, current.take, 0)
-                : await getNotificationInbox(current.appId, current.appToken, current.take, 0);
-            const rows = Array.isArray(page) ? page : [];
+                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, 0)
+                : await getNotificationInboxPage(current.appId, current.appToken, current.take, 0);
+            const rows = Array.isArray(page && page.rows) ? page.rows : [];
             setRows(rows);
             skipRef.current = rows.length;
-            setMore(rows.length >= current.take);
+            setMore(computeHasMore({ skip: 0, received: rows.length, take: current.take, total: page ? page.total : null }));
             // Opening the inbox marks everything read in both modes, so the
             // dot clears as soon as the first page has loaded.
-            if (mountedRef.current) setUnreadCount(0);
+            applyUnreadCount(0);
         } catch (e) {
             if (mountedRef.current) setError(describeError(e));
         } finally {
@@ -354,7 +339,7 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
                 setRefreshing(false);
             }
         }
-    }, [inert, setRows, setMore]);
+    }, [inert, setRows, setMore, applyUnreadCount]);
 
     const loadMore = useCallback(async () => {
         if (inert) return;
@@ -365,9 +350,9 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         try {
             const skip = skipRef.current;
             const page = current.inboxMode === 'indie'
-                ? await getIndieNotificationInbox(current.subId, current.appId, current.appToken, current.take, skip)
-                : await getNotificationInbox(current.appId, current.appToken, current.take, skip);
-            const rows = Array.isArray(page) ? page : [];
+                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, skip)
+                : await getNotificationInboxPage(current.appId, current.appToken, current.take, skip);
+            const rows = Array.isArray(page && page.rows) ? page.rows : [];
             const seen: { [key: string]: boolean } = {};
             const next = rowsRef.current.slice();
             next.forEach((row) => {
@@ -378,7 +363,7 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
             });
             setRows(next);
             skipRef.current = skip + rows.length;
-            setMore(rows.length >= current.take);
+            setMore(computeHasMore({ skip, received: rows.length, take: current.take, total: page ? page.total : null }));
         } catch (e) {
             // Keep what is already on screen; the user can scroll again to retry.
         } finally {
@@ -555,6 +540,7 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
         mode = 'mass',
         subId,
         take = 20,
+        syncBadge,
         colors,
         title = 'Notifications',
         emptyText = "You're all caught up",
@@ -563,7 +549,7 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
     } = props || {} as NotificationInboxScreenProps;
 
     const inboxMode = mode === 'indie' ? 'indie' : 'mass';
-    const ownInbox = useNotificationInbox(providedInbox ? INERT_CONFIG : { appId, appToken, mode, subId, take });
+    const ownInbox = useNotificationInbox(providedInbox ? INERT_CONFIG : { appId, appToken, mode, subId, take, syncBadge });
     const inbox = providedInbox || ownInbox;
     const theme = useInboxTheme(colors);
     const canDelete = inboxMode === 'indie' && allowDelete !== false;
@@ -712,6 +698,7 @@ export function NotificationInboxBell(props: NotificationInboxBellProps): any {
         mode: screenProps.mode,
         subId: screenProps.subId,
         take: screenProps.take,
+        syncBadge: screenProps.syncBadge,
     });
     const theme = useInboxTheme(screenProps.colors);
     const count = inbox.unreadCount || 0;
