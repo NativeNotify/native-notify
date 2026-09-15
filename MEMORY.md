@@ -26,7 +26,7 @@ This applies to clarifying questions (ask_question), decision points, plan revie
   - Prod DB (Heroku-style) needs `ssl: { rejectUnauthorized: false }` or you get "no pg_hba.conf entry ... no encryption".
   - Unread endpoints return `{ unreadCount: <number> }`; mass list supports `take`/`skip` + `X-Total-Count`; both list endpoints return 200 with a plain array.
 - RN 0.86 gotcha: core `SafeAreaView` logs a runtime deprecation warning (will be removed) — `inbox.js` avoids it and uses `StatusBar.currentHeight` (Android) / `Constants.statusBarHeight` (iOS) instead.
-- Packaging: `package.json` now has a `files` allowlist (`index.js`, `index.d.ts`, `inbox.js`, `assets/`) so `MEMORY.md` and `tmp/` can never ship to npm. `MEMORY.md` is git-tracked in this repo (like the server repo; the dashboard repo does not track it).
+- Packaging: `package.json` now has a `files` allowlist so `MEMORY.md` and `tmp/` can never ship to npm. `MEMORY.md` is git-tracked in this repo (like the server repo; the dashboard repo does not track it). (Superseded by the 2026-09-15 TypeScript refactor below — the allowlist is now `dist/` + `assets/`.)
 - Cross-repo follow-ups queued as task chips: docs-site pages (`native-notify-docs`) and in-app Expo guide sections (`native-notify-dashboard`). The dashboard repo can't patch other repos with file tools (its MEMORY.md) — those chips edit their own repos only.
 
 ## 2026-09-15 13:33:01
@@ -40,3 +40,20 @@ Update to the "publish pending re-auth" note above: the publish COMPLETED. Verif
 How it was unblocked: the stale `~/.npmrc` token was replaced by a fresh `npm login` (user-side), and the actual publish was run by the user in their terminal because the account's 2FA uses npm's web-OTP flow (`EOTP`) which a non-interactive shell cannot complete. For future releases, either the user runs `npm publish` themselves, or they create an npm **Automation** access token (bypasses 2FA for publishes) and we store it in `~/.npmrc` so agents can release directly.
 
 Also done this session: README/docs-facing work queued as task chips for `native-notify-docs` and `native-notify-dashboard`; kanban card moved to In Review with the full log.
+
+## 2026-09-15 14:05:00
+
+## Sources are now TypeScript; the package ships compiled `dist/` (2026-09-15)
+
+Commit `5891b11` (branch `master`, NOT pushed). Behavior-preserving refactor — no API, logic, URL, export-name or default-export changes.
+
+- Layout moved: root `index.js` / `inbox.js` were deleted and became `src/index.ts` / `src/inbox.tsx` (git recorded both as renames, so `git log --follow` still works). Root `index.d.ts` deleted — types are now generated.
+- `dist/` is a build artifact: gitignored, never committed, and built by `npm run build` (`tsc -p tsconfig.json`), wired to `prepublishOnly`. `package-lock.json` IS committed.
+- Packaging allowlist is now `files: ["dist", "assets"]`. `main: dist/index.js`, `types: dist/index.d.ts`. Still no `exports` map, deliberately — `main`/`types` resolve everywhere including old Metro. `version`, `dependencies` and `peerDependencies` unchanged.
+- **The only intentional source edit** was the bell asset path: `require('./assets/bell.png')` → `require('../assets/bell.png')`, because `dist/inbox.js` sits one level deeper than the old root `inbox.js` did. It must stay a static CommonJS `require` so the consumer's bundler resolves the asset to an id — NOT an ESM import, which compiles to `.default` and would hand the asset *object* to `<Image>`. Don't "fix" this back to an import.
+- `src/peer-modules.d.ts` declares the RN/Expo peerDependencies as `any` via `export =` form. That form matters: a namespace-style declaration collides with the real Expo SDK types (TS2484) when npm auto-installs peers, which would make the build SDK-version dependent. The file is declaration-only and never lands in `dist/`, so it can never shadow a consumer's real types.
+- **`typescript` is pinned to 5.9.x, not `latest`** — deliberate. npm `latest` is now TypeScript 7.0.2, which is ESM-only with an extensionless bin, so it cannot run on this repo's Node 18.17 (`ERR_UNKNOWN_FILE_EXTENSION`), and TS 7 also dropped `moduleResolution: node10`. Bumping TS requires bumping Node first.
+- Peer `_args` gotcha: bare `useRef()` is not a valid overload under React 19 `@types/react`; the sources use `useRef<any>(undefined)`, which is runtime-identical.
+- No test suite exists in this repo. Verification that was actually run: `npx tsc --noEmit` clean, `npm run build` emits all four `dist/` files, `node --check` on both built JS files, an esbuild bundle (`--loader:.png=dataurl`) that parses and contains `registerNNPushToken` / `NotificationInboxBell` / `getIndieNotificationInbox`, `npm pack --dry-run` (9 files: `dist/**`, `assets/**`, README, package.json — no `src/`, `node_modules`, `MEMORY.md` or `tmp/`), and a consumer `.ts` written against the OLD hand-written surface that typechecks clean under `strict: true`.
+- Generated types are no less permissive than the hand-written ones. Only deliberate widenings: the two inbox list getters return `Promise<InboxNotification[]>` (was `Promise<any>`; `InboxNotification` keeps its `[key: string]: any` index signature and stays assignable to `any`), and the two unread-count getters return `Promise<number>` (was `Promise<any>`). Nothing was removed; `NotificationInboxMode` is the sole addition.
+- If you run git commands here and get "You have not agreed to the Xcode license agreements", `/usr/bin/git` is the Xcode shim — use `/usr/local/bin/git` (2.23.0) instead.
