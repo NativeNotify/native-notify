@@ -4,8 +4,15 @@ import * as Notifications from 'expo-notifications';
 import axios from 'axios';
 import Constants from "expo-constants";
 
-import { NativeNotify, useNativeNotify } from './context';
+import { NativeNotify, useNativeNotify, configureAnalytics } from './context';
 import { readTotalCount } from './inboxUtils';
+import {
+    getRegistrationMeta,
+    reportNotificationOpen,
+    setAnalyticsPushToken,
+    startSessionAutoTracking,
+} from './analytics';
+import type { NativeNotifyAnalyticsConfig } from './context';
 
 /**
  * A notification as returned by the inbox list endpoints (mass + indie).
@@ -228,6 +235,12 @@ export interface RegisterNNPushTokenOptions {
     onError?: (error: any) => void;
     /** Re-register when the device push token rotates (default true). */
     watchTokenRotation?: boolean;
+    /**
+     * Opt-in analytics features for this app run (screens / sessions / opens /
+     * deviceId). Same shape as NativeNotify.init({ analytics }) — merging with
+     * whatever was configured there.
+     */
+    analytics?: NativeNotifyAnalyticsConfig;
 }
 
 export default function registerNNPushToken(appId?: any, appToken?: any, options: RegisterNNPushTokenOptions = {}): void {
@@ -243,17 +256,25 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
         if (Platform.OS === 'web') return;
 
         const opts = options || {};
+        // Merge this call's analytics flags (read at mount, like `options`).
+        configureAnalytics(opts.analytics);
         let cancelled = false;
 
-        const postTokens = (result: PushTokenResult) => postWithRetry(`https://app.nativenotify.com/api/device/tokens`, {
-            appId: config.appId,
-            appToken: config.appToken,
-            platformOS: Platform.OS,
-            expoAndroidToken: result.expoAndroidToken,
-            fcmToken: result.fcmToken,
-            expoIosToken: result.expoIosToken,
-            apnToken: result.apnToken
-        });
+        const postTokens = async (result: PushTokenResult) => {
+            // Registration enrichment (analytics wave): device id (opt-in),
+            // app version + timezone — optional server-side.
+            const meta = await getRegistrationMeta();
+            return postWithRetry(`https://app.nativenotify.com/api/device/tokens`, {
+                appId: config.appId,
+                appToken: config.appToken,
+                platformOS: Platform.OS,
+                expoAndroidToken: result.expoAndroidToken,
+                fcmToken: result.fcmToken,
+                expoIosToken: result.expoIosToken,
+                apnToken: result.apnToken,
+                ...meta,
+            });
+        };
 
         if (!config.appId || !config.appToken) {
             console.warn('[native-notify] registerNNPushToken: appId and appToken are required. Pass them in, call NativeNotify.init({ appId, appToken }), or wrap your app in <NativeNotifyProvider>.');
@@ -265,6 +286,7 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
                 if (result.status === 'success') {
                     try {
                         await postTokens(result);
+                        setAnalyticsPushToken(result.expoPushToken);
                         console.log('You can now send a push notification. You successfully registered your Native Notify Push Token!');
                         if (typeof opts.onRegistered === 'function') opts.onRegistered(result);
                     } catch (error) {
@@ -283,10 +305,20 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
         try {
             responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
                 console.log(response);
+                // Analytics: report the tap for per-notification open rates
+                // (no-op unless analytics.opens is enabled; deduped against
+                // the cold-start path inside useNativeNotifyPress).
+                reportNotificationOpen(response && response.notification && response.notification.request
+                    ? response.notification.request.content.data
+                    : undefined);
             });
         } catch (error) {
             // Notifications unavailable in this environment.
         }
+
+        // Analytics: foreground session tracking (no-op unless
+        // analytics.sessions is enabled).
+        const stopSessions = startSessionAutoTracking();
 
         // Expo push tokens can rotate (Android reinstall / applicationId
         // change, iOS backup restore). Re-register when the device token
@@ -299,6 +331,7 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
                     if (cancelled || result.status !== 'success' || !config.appId || !config.appToken) return;
                     try {
                         await postTokens(result);
+                        setAnalyticsPushToken(result.expoPushToken);
                         if (typeof opts.onRegistered === 'function') opts.onRegistered(result);
                     } catch (error) {
                         if (typeof opts.onError === 'function') opts.onError(error);
@@ -313,6 +346,7 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
             cancelled = true;
             removeSubscription(responseListener.current);
             removeSubscription(tokenRotationSub);
+            if (stopSessions) stopSessions();
         };
         // Mount-once semantics (same as before): options are read at mount.
     }, []);
@@ -328,13 +362,18 @@ export async function registerIndieID(subID: any, appId?: any, appToken?: any): 
         const expoToken = await getExpoPushTokenSafe();
         const deviceToken = await getDevicePushTokenSafe();
         if (expoToken) {
+            // Registration enrichment (analytics wave): device id (opt-in),
+            // app version + timezone — optional server-side.
+            const meta = await getRegistrationMeta();
+            setAnalyticsPushToken(expoToken);
             await axios.post(`https://app.nativenotify.com/api/indie/id`, {
                 subID,
                 appId: ids.appId,
                 appToken: ids.appToken,
                 platformOS: Platform.OS,
                 expoToken,
-                deviceToken
+                deviceToken,
+                ...meta
             }, { timeout: REQUEST_TIMEOUT_MS })
             .then(() => console.log('You successfully registered your Indie ID.'))
             .catch(err => console.log(err));
@@ -564,6 +603,12 @@ export function useNativeNotifyPress<T = { [key: string]: any }>(): { data: T; n
         let cancelled = false;
         const handle = (r: any) => {
             if (!cancelled && r) setResponse(r);
+            // Analytics: report the tap for per-notification open rates
+            // (no-op unless analytics.opens is enabled; deduped against the
+            // registration listener's report of the same tap).
+            reportNotificationOpen(r && r.notification && r.notification.request
+                ? r.notification.request.content.data
+                : undefined);
         };
 
         const last = readColdStartResponseOnce();
@@ -721,8 +766,24 @@ export async function deleteIndieNotificationInbox(subId: any, notificationId: a
 }
 
 // Credentials config (NativeNotify.init / <NativeNotifyProvider> / useNativeNotify).
-export { NativeNotify, NativeNotifyProvider, useNativeNotify } from './context';
-export type { NativeNotifyConfig, NativeNotifyProviderProps } from './context';
+export { NativeNotify, NativeNotifyProvider, useNativeNotify, configureAnalytics } from './context';
+export type { NativeNotifyConfig, NativeNotifyProviderProps, NativeNotifyAnalyticsConfig } from './context';
+
+// Analytics (opt-in): screen views, sessions, notification-open reports and
+// the stable device id (see the analytics flags on NativeNotify.init).
+export {
+    trackScreen,
+    flushScreenQueue,
+    reportNotificationOpen,
+    startSessionTracking,
+    endSessionTracking,
+    startSessionAutoTracking,
+    useNativeNotifyScreenTracking,
+    useNativeNotifySessionTracking,
+    getStableDeviceKey,
+    getRegistrationMeta,
+    setAnalyticsPushToken,
+} from './analytics';
 
 // Prebuilt Notification Inbox components (bell icon + full-screen inbox + data hook).
 export {

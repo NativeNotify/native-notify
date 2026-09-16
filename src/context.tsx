@@ -1,5 +1,5 @@
 /**
- * One place to configure Native Notify credentials.
+ * One place to configure Native Notify credentials (and analytics).
  *
  * Two ways to use it:
  *
@@ -19,10 +19,31 @@
  */
 import React, { createContext, useContext, useMemo } from 'react';
 
+/**
+ * Opt-in analytics features (all default to false — see analytics.ts):
+ * `screens` (screen views), `sessions` (session length), `opens`
+ * (per-notification open reports), `deviceId` (stable device id for uniques).
+ */
+export interface NativeNotifyAnalyticsConfig {
+    screens?: boolean;
+    sessions?: boolean;
+    opens?: boolean;
+    deviceId?: boolean;
+}
+
 export interface NativeNotifyConfig {
     appId?: number | string;
     appToken?: string;
+    /** Opt-in analytics features (screens / sessions / opens / deviceId). */
+    analytics?: NativeNotifyAnalyticsConfig;
 }
+
+const ANALYTICS_DEFAULTS: Required<NativeNotifyAnalyticsConfig> = {
+    screens: false,
+    sessions: false,
+    opens: false,
+    deviceId: false,
+};
 
 let globalConfig: NativeNotifyConfig = {};
 
@@ -35,7 +56,23 @@ export const NativeNotify = {
     getConfig(): NativeNotifyConfig {
         return { ...globalConfig };
     },
+    /** The analytics flags with defaults applied (all false unless enabled). */
+    getAnalyticsConfig(): Required<NativeNotifyAnalyticsConfig> {
+        return { ...ANALYTICS_DEFAULTS, ...(globalConfig.analytics || {}) };
+    },
 };
+
+/**
+ * Merge analytics flags into the module-level config (used by
+ * registerNNPushToken's `analytics` option). Only the provided keys change.
+ */
+export function configureAnalytics(partial?: NativeNotifyAnalyticsConfig | null): void {
+    if (!partial) return;
+    globalConfig = {
+        ...globalConfig,
+        analytics: { ...(globalConfig.analytics || {}), ...partial },
+    };
+}
 
 const NativeNotifyContext = createContext<NativeNotifyConfig | null>(null);
 

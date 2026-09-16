@@ -20,7 +20,7 @@ This applies to clarifying questions (ask_question), decision points, plan revie
 - Built and pushed `native-notify@4.1.0` to master. Commits: `3ba6157` = repo sync with the as-published 4.0.9 state (the working tree was dirty with changes that shipped to npm in Dec 2024 but were never committed — verified byte-identical against the registry tarball); `3068114` = the feature. New exports in `inbox.js` (re-exported from `index.js`): `NotificationInboxBell`, `NotificationInboxScreen`, `useNotificationInbox`.
 - 🔴 **npm publish is BLOCKED**: the npm token in `~/.npmrc` is stale (`npm whoami` → 401; `npm publish` → E404 permission). Run `npm login` (as the `native-notify` account), then `npm publish` from the repo root. Everything else is release-ready (tarball verified: 8 files, 13.9 kB, no MEMORY.md/tmp).
 - Live API facts verified against production — recipes in `tmp/scratch/verify-inbox-boundary.js` and `verify-inbox-sql.js`, run with:
-  `NODE_PATH=/Users/thetjmccarty/Documents/ReactNativeApps/native-notify-app/node_modules node <script>`
+  `NODE_PATH=/Users/thetjmccarty/Documents/native-notify-projects/native-notify-app/node_modules node <script>`
   - Inbox rows come back from BOTH list endpoints (mass + indie) as `{ notification_id, date, title, message, pushData }` — the controller maps `date_sent`→`date`, `push_data`→`pushData` (DB columns stay snake_case; same for the dashboard's `InboxNotification` type).
   - `date_sent` strings are stored as `M-D-YYYY H:MMAM/PM` (e.g. "8-28-2026 6:53AM"); Hermes parses that inconsistently, so `inbox.js` parses it deterministically (`SERVER_DATE_RE`).
   - Prod DB (Heroku-style) needs `ssl: { rejectUnauthorized: false }` or you get "no pg_hba.conf entry ... no encryption".
@@ -129,3 +129,45 @@ Next step if the user picks any card: move it from Suggestions → To Do/In Prog
 **New server finding (bonus, found while building v5)**: `updateFollowersList` (native-notify-app `server/expoControllers/followPushController.js` L186–217) sends NO response when the sub is not in the list — the request hangs. SDK v5 now times out at 10s and maps it to `status: 'not_found'`; the server chip "inbox API fixes + follow-endpoint hang" carries the real fix.
 
 **Board + chips**: 7 SDK cards → In Review; the other 11 cards → To Do; Suggestions column is now empty. 11 correct Start chips created (7× native-notify-app, 2× native-notify-docs, 2× native-notify-dashboard). ⚠️ GOTCHA: `propose_task` WITHOUT the `project` arg targets the CURRENT root — an accidental first batch of 11 chips points at this SDK repo instead of the target repos; those duplicates need dismissing (no chip-delete tool exists). Recommended server order (same-file conflicts): batched sends → token hygiene → receipts → inbox API → Node/v7 → analytics → rich fields; docs/dashboard chips are parallel-safe; the dashboard UI chip waits on the server analytics + rich-fields chips.
+
+## 2026-09-15 16:26:01
+
+## 2026-09-15 — Chips consolidated: the 11 Start chips were replaced by 3 (one per project)
+
+The user deleted the earlier chip batches (the 7× server / 2× dashboard / 2× docs chips AND the accidental wrong-target duplicates — none of those are needed anymore; dismiss any stragglers).
+
+Replacement, created this session — **one chip per project**, each self-contained, board-attached to "Native Notify", with worktrees ON by default:
+
+1. **native-notify-app — "Server: send-pipeline overhaul — batched sends, receipts, inbox fixes, tokens, Node 22/expo-server-sdk v7, analytics, rich fields"**: all 7 Server cards + the server halves of the two Product cards, with the recommended internal order baked in (batched sends → token hygiene → receipts → inbox API *incl. the follow-endpoint hang fix* → Node/v7 + enhanced push security → analytics → rich fields) and the incident-notes constraints (no token deletion phase 1, re-chunk per project, strike cleanup later, pm2 logrotate bump, APNs `headers` bug).
+2. **native-notify-dashboard — "Dashboard: analytics UI, rich-fields form, inbox read state, settings token, in-app docs refresh"**: analytics UI, modern-field send form, per-row unread dots + exact paging, access-token setting, and the in-app Expo-setup docs refresh (v5 API notes included). It documents its dependency on the server chip's new endpoints and says to code defensively against the contract if they're not deployed yet.
+3. **native-notify-docs — "Docs site: accuracy pass + native-notify v5 API docs + agent-readable markdown (llms.txt)"**: Expo setup reality fixes, v5.0.0 API + "Upgrading to v5" docs (mirror the SDK README's Upgrading section), and the `.md` + `/llms.txt` agent-readable pattern (prerequisite for the future native-notify-mcp).
+
+Start guidance given to the user: all three can run in parallel (independent repos); the dashboard chip self-sequences around the server endpoints, so starting it later (after the server chip's inbox/analytics/rich-field items land, to avoid rework) is the conservative option. The board's To Do cards #4–#14 remain the canonical task list; each chip's chat should move its cards when it starts.
+
+## 2026-09-16 14:15:15
+
+## native-notify projects relocated to ~/Documents/native-notify-projects/ (user-approved, done via straight `mv` — NO clone)
+
+New locations:
+- `~/Documents/native-notify-projects/native-notify` ← was `~/Documents/npm-packages/native-notify` (THIS repo)
+- `~/Documents/native-notify-projects/native-notify-app` ← was `~/Documents/ReactNativeApps/native-notify-app` (the Express/PG **server** repo)
+- `~/Documents/native-notify-projects/native-notify-dashboard` ← was `~/Documents/NextSites/native-notify-dashboard`
+- `~/Documents/native-notify-projects/native-notify-docs` ← was `~/Documents/NextSites/native-notify-docs`
+
+Why move-not-clone: a same-disk `mv` is instant and preserves everything a clone would silently drop — untracked `.env`/`.env.test` (server), `.env.local` (dashboard), untracked `MEMORY.md` (dashboard + docs), `node_modules/`, `dist/`, `tmp/`, local git config, and extra remotes.
+
+Post-move facts (verified): remotes/branches unchanged; the two leftover *merged* ChatOSS worktrees (`native-notify-app/.chatoss/worktrees/native-notify-app-3461cd8f`, `native-notify-dashboard/.chatoss/worktrees/native-notify-dashboard-d0fc32ba`) were fixed with `git worktree repair`; the old NODE_PATH recipe in this file (line ~23) was updated in place to the new path. ChatOSS known-folder entries and chat attachments pointing at the old paths are stale — reopen the new paths there.
+
+Deliberately NOT moved (other native-notify folders, if ever asked): `NodejsServers/native-notify-server`, `NodejsServers/native-notify-p8-storage`, `ReactNativeApps/native-notify-mobile-app`, `ReactNativeApps/native-notify` (older copy), `NextSites/native-notify-customer-support`, `FlutterApps/native_notify_dev`, `pub.dev-packages/native_notify`, `ReactNativeApps/Native Notify Photos`.
+
+GitHub/SSH/npm connectivity is path-independent — nothing about auth changed. Any older note below that still shows the pre-move paths should be read with the mapping above.
+
+**Correction (same session):** the two leftover worktrees could NOT be repaired with `git worktree repair` — this machine's default `git` does not support the `repair` subcommand (it printed usage). They were repaired manually: for each worktree the two pointer files were rewritten — `<worktree>/.chatoss/worktrees/<name>/.git` (now points to the new main-repo path) and `<main>/.git/worktrees/<name>/gitdir` (now points to the new worktree path). Verified afterwards: `git worktree list` + `git status` work in both. If this Mac's git is ever upgraded to a version with `worktree repair`, it will simply no-op on these.
+
+## 2026-09-16: v5.1.0 — analytics wave (screens, sessions, opens, deviceId)
+
+**New exports (all additive; no breaking changes):** `trackScreen`, `flushScreenQueue`, `useNativeNotifyScreenTracking`, `startSessionTracking`, `endSessionTracking`, `startSessionAutoTracking`, `useNativeNotifySessionTracking`, `reportNotificationOpen`, `getStableDeviceKey`, `getRegistrationMeta`, `setAnalyticsPushToken`, `configureAnalytics` (from context) + the `NativeNotifyAnalyticsConfig` type. Config: `NativeNotify.init({ analytics })` or `registerNNPushToken(..., { analytics })` — flags screens/sessions/opens/deviceId, ALL DEFAULT FALSE (opt-in). Analytics config lives in `context.tsx` (avoids a context↔analytics import cycle); analytics.ts reads it live via `NativeNotify.getAnalyticsConfig()`.
+
+**What the pieces do:** screens → batched POST /api/analytics/screen (2s flush, consecutive-dedupe; auto-hook reads expo-router's `usePathname()` or takes a `getScreen` callback); sessions → AppState foreground/background → POST /api/analytics/session (deduped per sessionId server-side; auto-wired by registerNNPushToken); opens → POST /api/notification/opened reading the server-injected `nn_notification_id` from push data (5s dedupe window collapses listener+cold-start double reports); deviceId → expo-application IDFV/ANDROID_ID, sent with registrations + events (falls back to the Expo push token server-side). Registrations also now send appVersion (expo-constants) + timezone (Intl).
+
+**🔴 Gotchas:** (1) `expo-router` and `expo-application` are loaded with DYNAMIC require specifiers (`const s='expo-router'; require(s)`) inside try/catch — a literal require would make Metro/webpack FAIL THE BUNDLE for apps without those modules. (2) Pure logic lives in `src/analyticsUtils.ts` (normalizeScreenName, isDuplicateScreenChange, recordOpenReport, makeSessionId, clampSessionDuration) specifically so it is unit-testable under plain `node --test` — analytics.ts itself imports react-native and can't load in node tests. (3) `configureAnalytics` is exported from `./context`, NOT `./analytics` (index.ts re-export locations matter for the consumer fixture). Tests: test/analyticsUtils.test.ts; consumer.ts covers the whole new surface. `npm run typecheck` + `npm test` (14 tests) + `npm run build` all green. Version bumped 5.0.0 → 5.1.0; NOT published to npm yet (publish with `npm publish` after review — or on request).

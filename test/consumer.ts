@@ -8,8 +8,11 @@
 import registerNNPushToken, {
     NativeNotify,
     NativeNotifyProvider,
+    configureAnalytics,
     deleteFollowMaster,
     deleteIndieNotificationInbox,
+    endSessionTracking,
+    flushScreenQueue,
     getFollowMaster,
     getIndieNotificationInbox,
     getIndieNotificationInboxPage,
@@ -17,6 +20,8 @@ import registerNNPushToken, {
     getNotificationInboxPage,
     getPushDataInForeground,
     getPushDataObject,
+    getRegistrationMeta,
+    getStableDeviceKey,
     getUnreadIndieNotificationInboxCount,
     getUnreadNotificationInboxCount,
     postFollowingID,
@@ -24,11 +29,18 @@ import registerNNPushToken, {
     registerFollowMasterID,
     registerForPushNotificationsAsync,
     registerIndieID,
+    reportNotificationOpen,
+    setAnalyticsPushToken,
+    startSessionAutoTracking,
+    startSessionTracking,
+    trackScreen,
     unfollowMasterID,
     unregisterIndieDevice,
     updateFollowersList,
     useNativeNotify,
     useNativeNotifyPress,
+    useNativeNotifyScreenTracking,
+    useNativeNotifySessionTracking,
     NotificationInboxBell,
     NotificationInboxScreen,
     useNotificationInbox,
@@ -37,6 +49,7 @@ import type {
     InboxNotification,
     InboxPage,
     NativeNotifyActionResult,
+    NativeNotifyAnalyticsConfig,
     NativeNotifyConfig,
     NotificationInboxBellProps,
     NotificationInboxScreenProps,
@@ -47,18 +60,47 @@ import type {
     UseNotificationInboxResult,
 } from '../src/index';
 
-export const config: NativeNotifyConfig = { appId: 1, appToken: 'token' };
+const analytics: NativeNotifyAnalyticsConfig = {
+    screens: true,
+    sessions: true,
+    opens: true,
+    deviceId: true,
+};
+
+export const config: NativeNotifyConfig = { appId: 1, appToken: 'token', analytics };
 
 export async function compileOnly(): Promise<void> {
     NativeNotify.init(config);
+    NativeNotify.init({ appId: 1, appToken: 'token', analytics: { opens: true } });
+    configureAnalytics({ screens: true });
+    const flags = NativeNotify.getAnalyticsConfig();
+    void flags.sessions;
 
     const options: RegisterNNPushTokenOptions = {
         onRegistered: (result: PushTokenResult) => { void result.expoPushToken; },
         onError: (error: any) => { void error; },
         watchTokenRotation: true,
+        analytics,
     };
     void options; // registerNNPushToken is a hook — called from a component,
     void registerNNPushToken; // never from this plain function.
+
+    // Analytics surface: track + flush, sessions, opens, device identity.
+    trackScreen('Home');
+    trackScreen('/products/123');
+    flushScreenQueue();
+    reportNotificationOpen({ nn_notification_id: '1', nn_source: 'mass' });
+    startSessionTracking();
+    endSessionTracking();
+    const stopSessions: (() => void) | null = startSessionAutoTracking();
+    void stopSessions;
+    setAnalyticsPushToken('ExponentPushToken[placeholder]');
+    const deviceKey: string | null = await getStableDeviceKey();
+    void deviceKey;
+    const meta = await getRegistrationMeta();
+    void meta.appVersion;
+    void useNativeNotifyScreenTracking;
+    void useNativeNotifySessionTracking;
 
     const tokenResult: PushTokenResult = await registerForPushNotificationsAsync();
     void tokenResult.status;

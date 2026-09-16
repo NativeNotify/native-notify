@@ -129,6 +129,46 @@ export default function App() {
 
 `useNativeNotifyPress` handles both the tap that launched a cold app (which the raw expo-notifications response listener misses) and taps while the app runs. `getPushDataObject()` is a drop-in wrapper over it. Convention: put a `url` key in your push data to deep-link with Expo Router / React Navigation.
 
+# Analytics (opt-in)
+
+native-notify can report app analytics to your Native Notify dashboard: screen views ("which screens do users use most"), sessions, and per-notification open rates. Everything is **off by default** — enable the flags you want:
+
+```
+import { NativeNotify, useNativeNotifyScreenTracking } from 'native-notify';
+
+NativeNotify.init({
+  appId: yourAppId,
+  appToken: 'yourAppToken',
+  analytics: {
+    screens: true,   // screen views
+    sessions: true,  // foreground session length
+    opens: true,     // notification tap → open rate
+    deviceId: true,  // stable device id so uniques survive token rotation
+  },
+});
+```
+
+Screen tracking, two ways:
+
+```
+// Expo Router — one line in the root layout tracks every route change:
+export default function RootLayout() {
+  useNativeNotifyScreenTracking(); // reads usePathname() for you
+  return <Slot />;
+}
+
+// Manual (any navigation library):
+import { trackScreen } from 'native-notify';
+trackScreen('Home');
+trackScreen(`/products/${id}`);
+```
+
+- Screen views are batched (flushed ~2s later, immediately on background) and consecutive duplicates collapse.
+- `sessions` is wired automatically by `registerNNPushToken`; `useNativeNotifySessionTracking()` exists for manual setups.
+- `opens` reads the `nn_notification_id` Native Notify injects into every push payload (mass + single indie sends; group sends carry no per-notification id) and reports the tap for per-notification open rates. Taps that surface twice (listener + cold start) are deduped.
+- `deviceId` uses `expo-application` (`getIosIdForVendorAsync` / `getAndroidId`) when installed — unique user counts survive Expo-token rotation. Without it, uniques fall back to the Expo push token.
+- Analytics requests are best-effort: a failure never throws into your app, and your own `pushData` keys are untouched (the server adds `nn_notification_id` / `nn_source` alongside them).
+
 # Notification Inbox (prebuilt components)
 
 native-notify ships a drop-in Notification Inbox: a bell icon for your header with a red dot when there are unread notifications, and a full-screen inbox screen that opens when it's tapped.
@@ -188,6 +228,8 @@ Want your own trigger? Render `NotificationInboxScreen` and control `visible` / 
 Exact pagination is available for custom UIs: `getNotificationInboxPage()` and `getIndieNotificationInboxPage()` return `{ rows, total }` (the server's `X-Total-Count`), so "load more" is exact instead of a guess.
 
 ## Upgrading
+
+**v5.1 (from v5.0)** — additive: the opt-in analytics features (`analytics` flags on `NativeNotify.init` and `registerNNPushToken` options; `trackScreen`, `flushScreenQueue`, `useNativeNotifyScreenTracking`, `startSessionTracking`, `endSessionTracking`, `startSessionAutoTracking`, `useNativeNotifySessionTracking`, `reportNotificationOpen`, `getStableDeviceKey`, `getRegistrationMeta`, `setAnalyticsPushToken`, `configureAnalytics`). No breaking changes.
 
 **v5 (from v4)** — new exports: `NativeNotify`, `NativeNotifyProvider`, `useNativeNotify`, `useNativeNotifyPress`, `registerForPushNotificationsAsync`, `getNotificationInboxPage`, `getIndieNotificationInboxPage`; `registerNNPushToken` gains an optional third `options` argument; `appId`/`appToken` are optional everywhere (resolved from `NativeNotify.init` / `<NativeNotifyProvider>` when omitted).
 
