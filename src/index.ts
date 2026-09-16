@@ -260,6 +260,27 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
         configureAnalytics(opts.analytics);
         let cancelled = false;
 
+        // Guard state for the token-rotation listener below. Our own
+        // registerForPushNotificationsAsync() fetches the device push token,
+        // and expo-notifications documents that fetching inside a push-token
+        // listener re-fires the listener — an infinite re-registration loop.
+        // (It shipped in 5.0.0 and was observed in the wild 2026-09-16:
+        // thousands of calls/sec, wildly inflating the app's analytics.) The
+        // guards: skip same-token no-op events, skip self-triggered re-fires
+        // within the interval, never overlap, and only re-post when the
+        // tokens actually changed.
+        const TOKEN_ROTATION_MIN_INTERVAL_MS = 60 * 1000;
+        const tokenSignature = (r: PushTokenResult) => JSON.stringify([
+            r.expoAndroidToken || null,
+            r.fcmToken || null,
+            r.expoIosToken || null,
+            r.apnToken || null,
+        ]);
+        let lastPostedSignature: string | null = null;
+        let lastDevicePushToken: string | null = null;
+        let lastRotationHandledAt = 0;
+        let rotationInFlight = false;
+
         const postTokens = async (result: PushTokenResult) => {
             // Registration enrichment (analytics wave): device id (opt-in),
             // app version + timezone — optional server-side.
@@ -286,6 +307,8 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
                 if (result.status === 'success') {
                     try {
                         await postTokens(result);
+                        lastPostedSignature = tokenSignature(result);
+                        lastDevicePushToken = result.devicePushToken ? String(result.devicePushToken) : null;
                         setAnalyticsPushToken(result.expoPushToken);
                         console.log('You can now send a push notification. You successfully registered your Native Notify Push Token!');
                         if (typeof opts.onRegistered === 'function') opts.onRegistered(result);
@@ -323,18 +346,48 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
         // Expo push tokens can rotate (Android reinstall / applicationId
         // change, iOS backup restore). Re-register when the device token
         // changes so the server never keeps a dead token.
+        //
+        // IMPORTANT: this listener must never retrigger itself.
+        // registerForPushNotificationsAsync() fetches the device push token,
+        // and expo-notifications re-fires push-token listeners when
+        // getDevicePushTokenAsync() runs — doing that unguarded inside this
+        // handler is a documented infinite-loop footgun (see the guard state
+        // above for the 2026-09-16 incident it caused).
         let tokenRotationSub: any = null;
         if (opts.watchTokenRotation !== false) {
             try {
-                tokenRotationSub = Notifications.addPushTokenListener(async () => {
-                    const result = await registerForPushNotificationsAsync();
-                    if (cancelled || result.status !== 'success' || !config.appId || !config.appToken) return;
+                tokenRotationSub = Notifications.addPushTokenListener(async (incomingToken: any) => {
+                    if (cancelled || rotationInFlight) return;
+
+                    // Skip no-op events outright — e.g. this listener re-firing
+                    // for our own fetch, which reports the token we already have.
+                    const incomingData = incomingToken && typeof incomingToken === 'object' && typeof incomingToken.data === 'string'
+                        ? incomingToken.data
+                        : null;
+                    if (incomingData && lastDevicePushToken && incomingData === lastDevicePushToken) return;
+
+                    const now = Date.now();
+                    if (now - lastRotationHandledAt < TOKEN_ROTATION_MIN_INTERVAL_MS) return;
+                    lastRotationHandledAt = now;
+
+                    rotationInFlight = true;
                     try {
+                        const result = await registerForPushNotificationsAsync();
+                        if (cancelled || result.status !== 'success' || !config.appId || !config.appToken) return;
+
+                        // Only re-post when the tokens actually changed.
+                        const signature = tokenSignature(result);
+                        if (signature === lastPostedSignature) return;
+
                         await postTokens(result);
+                        lastPostedSignature = signature;
+                        lastDevicePushToken = result.devicePushToken ? String(result.devicePushToken) : null;
                         setAnalyticsPushToken(result.expoPushToken);
                         if (typeof opts.onRegistered === 'function') opts.onRegistered(result);
                     } catch (error) {
                         if (typeof opts.onError === 'function') opts.onError(error);
+                    } finally {
+                        rotationInFlight = false;
                     }
                 });
             } catch (error) {

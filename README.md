@@ -229,6 +229,8 @@ Exact pagination is available for custom UIs: `getNotificationInboxPage()` and `
 
 ## Upgrading
 
+**v5.1.1** — fixes an infinite re-registration loop: the token-rotation listener could re-fetch the device push token, which re-fires the listener (expo-notifications documents the footgun) — a stuck app would hammer `/api/device/tokens` thousands of times per second. The listener now skips same-token no-op events, throttles to at most one check per minute, and only re-posts when the tokens actually changed. No API changes.
+
 **v5.1 (from v5.0)** — additive: the opt-in analytics features (`analytics` flags on `NativeNotify.init` and `registerNNPushToken` options; `trackScreen`, `flushScreenQueue`, `useNativeNotifyScreenTracking`, `startSessionTracking`, `endSessionTracking`, `startSessionAutoTracking`, `useNativeNotifySessionTracking`, `reportNotificationOpen`, `getStableDeviceKey`, `getRegistrationMeta`, `setAnalyticsPushToken`, `configureAnalytics`). No breaking changes.
 
 **v5 (from v4)** — new exports: `NativeNotify`, `NativeNotifyProvider`, `useNativeNotify`, `useNativeNotifyPress`, `registerForPushNotificationsAsync`, `getNotificationInboxPage`, `getIndieNotificationInboxPage`; `registerNNPushToken` gains an optional third `options` argument; `appId`/`appToken` are optional everywhere (resolved from `NativeNotify.init` / `<NativeNotifyProvider>` when omitted).
