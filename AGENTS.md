@@ -30,6 +30,20 @@ When you add or change a feature, in the SAME wave:
 
 Do not ship a feature an agent cannot discover or use.
 
+### 3. Content values — absolute brand rules
+
+- **Nothing sexual in nature, ever.** Not in code, comments, docs, examples,
+  sample data, test fixtures, tool descriptions, marketing copy, or any
+  user-facing string. There is no context where it is acceptable.
+- This project's owner holds **very conservative Christian values on life and
+  modesty**. All content — examples, sample data, copy — must respect them:
+  keep everything modest, plain, and family-appropriate, and never put
+  anything in the product that contradicts those values.
+- **No Yoga references** (explicitly called out), and nothing in that spirit —
+  no occult, gambling, alcohol- or party-centric examples. When a sample app
+  name or example prompt is needed, pick something neutral and wholesome — a
+  bakery, a bookstore, a community newsletter.
+
 ## Repo facts
 
 - Source in `src/` (`index.ts`, `inbox.tsx`, `analytics.ts`, `context.tsx`,
