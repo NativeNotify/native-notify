@@ -6,6 +6,34 @@ register devices, receive pushes, and power the Notification Inbox + analytics.
 
 ## Golden rules (apply to every Native Notify repo)
 
+### 0. Never break an existing contract
+
+This one overrides every other rule here. **Old endpoints and old functions
+never break.** Add new functions, new optional arguments, new versions — but
+an integration built against any older version, or against the raw REST
+endpoints straight from Postman, must keep working untouched, forever.
+
+That includes the quiet breakages, which are the dangerous ones because the
+response still looks fine:
+
+- **Truncating a list.** An endpoint documented as returning "all of X" must
+  return all of X. Adding a default page size to `GET /api/expo/indie/subs`
+  cut one customer's audience from 11,404 to 100 while every request still
+  answered `201`; their sender had no way to notice. If you add pagination,
+  make it opt-in and leave the unparameterized call complete.
+- **Capping a caller's own parameter.** If a client asks for `take=1000`, give
+  it 1000 rows or an error — never 100 rows and a success.
+- **Renumbering a status code.** `201` -> `200`, or `201` -> `403`/`404`, turns
+  a working call into a failure for anyone who checks the status.
+- **Adding cacheability.** Switching a response to a status/headers that let
+  intermediaries or device HTTP stacks cache it freezes clients on stale data.
+
+Before changing any handler, diff it against the previous version and ask what
+an existing caller would now see differently — status, body shape, row count,
+headers. If the answer is anything at all, it needs a new endpoint or a new
+optional parameter instead. A regression to an existing contract is a bug and
+gets reverted, however tidy the new behavior is.
+
 ### 1. Agent-first is the product direction
 
 The focus of Native Notify is that **AI agents can do everything for users** —
