@@ -27,6 +27,14 @@ response still looks fine:
   a working call into a failure for anyone who checks the status.
 - **Adding cacheability.** Switching a response to a status/headers that let
   intermediaries or device HTTP stacks cache it freezes clients on stale data.
+- **Trimming a sub's device list.** One sub id registered by many devices is a
+  supported pattern: group-based apps put every member under the same indie
+  id so a single send reaches the whole group, so a sub with 50 or 100 tokens
+  is the congregation, not bloat. A "keep the newest 10 tokens" cap
+  (2026-09-15) evicted every device but ten from those subs and most members
+  silently stopped receiving pushes while registration still answered
+  success. Token arrays accumulate every registered device; dead tokens are
+  the receipt pipeline's job, never a trim at write time.
 
 Before changing any handler, diff it against the previous version and ask what
 an existing caller would now see differently — status, body shape, row count,
