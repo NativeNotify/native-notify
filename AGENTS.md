@@ -35,6 +35,16 @@ response still looks fine:
   silently stopped receiving pushes while registration still answered
   success. Token arrays accumulate every registered device; dead tokens are
   the receipt pipeline's job, never a trim at write time.
+- **Deleting customer data as "cleanup."** Inbox rows, subs, tokens and send
+  history are the customer's records, not our cache. On 2026-09-04 a
+  "one-time retention cleanup" deleted 24.7 million indie inbox rows — every
+  notification older than about six weeks, for every app — under the label of
+  365-day retention, because a size target was set first and the cutoff was
+  bent to meet it. Owners opened their inboxes and found them empty. Never
+  bulk-delete or truncate customer data to save space or speed up a query. A
+  retention window is a product decision: it needs the owner's explicit
+  sign-off on the actual cutoff date, a verified backup that predates the
+  delete, and a dry-run count first.
 
 Before changing any handler, diff it against the previous version and ask what
 an existing caller would now see differently — status, body shape, row count,
