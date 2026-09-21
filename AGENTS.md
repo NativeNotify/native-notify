@@ -76,6 +76,11 @@ When you add or change a feature, in the SAME wave:
 
 Do not ship a feature an agent cannot discover or use.
 
+**Standing rule, added 2026-09-21 — service-change doc sync:** whenever a
+change to the Native Notify service would require updating the MCP server,
+the dashboard's in-app docs, or the docs site (nativenotify.com) docs, those
+updates are made in the same wave, automatically — never wait to be asked.
+
 ### 3. Content values — absolute brand rules
 
 - **Nothing sexual in nature, ever.** Not in code, comments, docs, examples,

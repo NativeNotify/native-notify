@@ -24,12 +24,19 @@ import registerNNPushToken, {
     getStableDeviceKey,
     getUnreadIndieNotificationInboxCount,
     getUnreadNotificationInboxCount,
+    markIndieNotificationRead,
+    markMassNotificationRead,
     postFollowingID,
     registerFollowerID,
     registerFollowMasterID,
     registerForPushNotificationsAsync,
     registerIndieID,
     reportNotificationOpen,
+    sendIndieGroupNotification,
+    sendIndieNotification,
+    sendMassNotification,
+    sendNotificationToFollowers,
+    setAndroidNotificationChannel,
     setAnalyticsPushToken,
     startSessionAutoTracking,
     startSessionTracking,
@@ -46,6 +53,7 @@ import registerNNPushToken, {
     useNotificationInbox,
 } from '../src/index';
 import type {
+    AndroidNotificationChannelOptions,
     InboxNotification,
     InboxPage,
     NativeNotifyActionResult,
@@ -54,8 +62,11 @@ import type {
     NotificationInboxBellProps,
     NotificationInboxScreenProps,
     NotificationInboxTheme,
+    PerNotificationReadOptions,
     PushTokenResult,
     RegisterNNPushTokenOptions,
+    RichPushFields,
+    SendNotificationOptions,
     UseNotificationInboxOptions,
     UseNotificationInboxResult,
 } from '../src/index';
@@ -134,6 +145,43 @@ export async function compileOnly(): Promise<void> {
     await getUnreadIndieNotificationInboxCount('sub-1');
     await deleteIndieNotificationInbox('sub-1', 'notif-1');
 
+    // Per-notification read state (2026-09-21): opt-in page flags + mark-read.
+    const readOptions: PerNotificationReadOptions = { perNotification: true };
+    await getNotificationInboxPage(1, 'token', 20, 0, readOptions);
+    await getIndieNotificationInboxPage('sub-1', 1, 'token', 20, 0, readOptions);
+    const markedMass: boolean = await markMassNotificationRead('notif-1', 1, 'token');
+    void markedMass;
+    const markedIndie: boolean = await markIndieNotificationRead('notif-1', 'sub-1', 1, 'token');
+    void markedIndie;
+
+    // Rich-field send helpers (2026-09-21): every message field is optional.
+    const rich: RichPushFields = {
+        subtitle: 'Sub',
+        badge: 1,
+        ttl: 60,
+        interruptionLevel: 'active',
+        categoryId: 'CAT',
+        channelId: 'alerts',
+        collapseId: 'collapse-1',
+        contentAvailable: true,
+        mutableContent: true,
+        sound: false,
+    };
+    const sendOptions: SendNotificationOptions = {
+        ...rich,
+        pushData: { url: '/x' },
+        bigPictureURL: 'https://example.com/x.png',
+        appId: 1,
+        appToken: 'token',
+    };
+    await sendMassNotification('Title', 'Body', sendOptions);
+    await sendIndieNotification('sub-1', 'Title', 'Message', sendOptions);
+    await sendIndieGroupNotification(['sub-1', 'sub-2'], 'Title', 'Message', sendOptions);
+    await sendNotificationToFollowers('master-1', 'Title', 'Message', sendOptions);
+    const channelOptions: AndroidNotificationChannelOptions = { name: 'Alerts', importance: 5, sound: 'chime.wav' };
+    const channelCreated: boolean = await setAndroidNotificationChannel('alerts', channelOptions);
+    void channelCreated;
+
     const theme: NotificationInboxTheme = { dot: '#f00' };
     const screenProps: NotificationInboxScreenProps = {
         mode: 'indie',
@@ -142,9 +190,14 @@ export async function compileOnly(): Promise<void> {
         syncBadge: false,
     };
     const bellProps: NotificationInboxBellProps = { ...screenProps, showCount: true };
-    const hookOptions: UseNotificationInboxOptions = { mode: 'mass', take: 10 };
+    const hookOptions: UseNotificationInboxOptions = { mode: 'mass', take: 10, perNotificationRead: true };
     const result: UseNotificationInboxResult | null = useNotificationInbox(hookOptions);
     void result;
+    if (result) {
+        void result.perNotificationRead;
+        const marked: Promise<boolean> = result.markNotificationRead(result.notifications[0]);
+        void marked;
+    }
 
     const pushData = getPushDataObject<{ url?: string }>();
     void pushData.url;

@@ -6,6 +6,8 @@ import Constants from "expo-constants";
 
 import { NativeNotify, useNativeNotify, configureAnalytics } from './context';
 import { readTotalCount } from './inboxUtils';
+import { buildSendPayload } from './sendUtils';
+import type { SendNotificationOptions } from './sendUtils';
 import {
     getRegistrationMeta,
     reportNotificationOpen,
@@ -32,6 +34,14 @@ export interface InboxNotification<TData = any> {
     pushData?: TData;
     date_sent?: any;
     push_data?: TData;
+    /**
+     * Per-notification read state (2026-09-21). Only authoritative when the
+     * page was fetched with per-notification read state: indie pages with
+     * `{ perNotification: true }`, mass pages with `{ perNotification: true }`
+     * on a device with a push token. On legacy fetches every row reports
+     * `false` (the whole inbox is marked read on fetch instead).
+     */
+    read?: boolean;
     [key: string]: any;
 }
 
@@ -742,26 +752,38 @@ function toUnreadCount(data: any): number {
 /**
  * One page of the mass (app-wide) inbox. Marks the inbox as read first, the
  * same as getNotificationInbox() always has.
+ *
+ * Per-notification read state (2026-09-21): pass
+ * `{ perNotification: true }` to fetch each row's real read state for THIS
+ * device (`?expoToken=`) and skip the mark-all-read — pair it with
+ * markMassNotificationRead() when a row is opened. Without the option the
+ * request is byte-identical to previous versions (legacy callers unchanged).
  */
-export async function getNotificationInboxPage(appId?: any, appToken?: any, take: any = 20, skip: any = 0): Promise<InboxPage> {
+export async function getNotificationInboxPage(appId?: any, appToken?: any, take: any = 20, skip: any = 0, options?: PerNotificationReadOptions): Promise<InboxPage> {
     const ids = resolveIds(appId, appToken);
+    const perNotification = !!(options && options.perNotification);
 
+    let deviceToken: string | null = null;
     if (Platform.OS !== 'web') {
-        const token = await getExpoPushTokenSafe();
-        if (token) {
-            try {
-                await axios.post(`https://app.nativenotify.com/api/notification/inbox/read`, {
-                    appId: ids.appId,
-                    appToken: ids.appToken,
-                    expoToken: token,
-                }, { timeout: REQUEST_TIMEOUT_MS });
-            } catch (error) {
-                // Marking everything read is best-effort; never block reading.
-            }
+        deviceToken = await getExpoPushTokenSafe();
+    }
+
+    if (!perNotification && deviceToken) {
+        try {
+            await axios.post(`https://app.nativenotify.com/api/notification/inbox/read`, {
+                appId: ids.appId,
+                appToken: ids.appToken,
+                expoToken: deviceToken,
+            }, { timeout: REQUEST_TIMEOUT_MS });
+        } catch (error) {
+            // Marking everything read is best-effort; never block reading.
         }
     }
 
-    let response = await axios.get(`https://app.nativenotify.com/api/notification/inbox/${ids.appId}/${ids.appToken}?take=${take}&skip=${skip}`, { timeout: REQUEST_TIMEOUT_MS });
+    const tokenParam = perNotification && deviceToken
+        ? `&expoToken=${encodeURIComponent(deviceToken)}`
+        : '';
+    let response = await axios.get(`https://app.nativenotify.com/api/notification/inbox/${ids.appId}/${ids.appToken}?take=${take}&skip=${skip}${tokenParam}`, { timeout: REQUEST_TIMEOUT_MS });
 
     return {
         rows: Array.isArray(response.data) ? response.data : [],
@@ -786,11 +808,75 @@ export async function getUnreadNotificationInboxCount(appId?: any, appToken?: an
     return toUnreadCount(response.data);
 }
 
-/** One page of an indie (per-user) inbox. */
-export async function getIndieNotificationInboxPage(subId?: any, appId?: any, appToken?: any, take: any = 20, skip: any = 0): Promise<InboxPage> {
-    const ids = resolveIds(appId, appToken);
+/** Options for per-notification read state (2026-09-21). */
+export interface PerNotificationReadOptions {
+    /**
+     * Fetch each row's real read state instead of marking the whole inbox
+     * read on fetch. Indie pages add `?perNotification=true`; mass pages add
+     * this device's `?expoToken=` (needs a real device push token — on
+     * simulators/web there is no per-device read state). Mark opened rows
+     * with markIndieNotificationRead() / markMassNotificationRead().
+     */
+    perNotification?: boolean;
+}
 
-    let response = await axios.get(`https://app.nativenotify.com/api/indie/notification/inbox/${subId}/${ids.appId}/${ids.appToken}?take=${take}&skip=${skip}`, { timeout: REQUEST_TIMEOUT_MS });
+/**
+ * Mark ONE mass-inbox notification read for this device (2026-09-21; pair
+ * with getNotificationInboxPage(..., { perNotification: true })). Best-effort
+ * — resolves false when there is no device token or the server rejects the
+ * call; never throws.
+ */
+export async function markMassNotificationRead(notificationId: any, appId?: any, appToken?: any): Promise<boolean> {
+    const ids = resolveIds(appId, appToken);
+    if (Platform.OS === 'web') return false;
+    try {
+        const token = await getExpoPushTokenSafe();
+        if (!token) return false;
+        await axios.post(`https://app.nativenotify.com/api/notification/inbox/read`, {
+            appId: ids.appId,
+            appToken: ids.appToken,
+            expoToken: token,
+            notificationId,
+        }, { timeout: REQUEST_TIMEOUT_MS });
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
+ * Mark ONE indie-inbox notification read (2026-09-21; pair with
+ * getIndieNotificationInboxPage(..., { perNotification: true })). Best-effort
+ * — resolves false on any failure; never throws.
+ */
+export async function markIndieNotificationRead(notificationId: any, subId?: any, appId?: any, appToken?: any): Promise<boolean> {
+    const ids = resolveIds(appId, appToken);
+    try {
+        await axios.post(`https://app.nativenotify.com/api/indie/notification/inbox/read`, {
+            appId: ids.appId,
+            appToken: ids.appToken,
+            subId,
+            notificationId,
+        }, { timeout: REQUEST_TIMEOUT_MS });
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+/** One page of an indie (per-user) inbox.
+ *
+ * Per-notification read state (2026-09-21): pass
+ * `{ perNotification: true }` to add `?perNotification=true`, which returns
+ * each row's real read flag and stops the server marking the whole inbox
+ * read on fetch. Without the option the request is byte-identical to
+ * previous versions (legacy callers unchanged).
+ */
+export async function getIndieNotificationInboxPage(subId?: any, appId?: any, appToken?: any, take: any = 20, skip: any = 0, options?: PerNotificationReadOptions): Promise<InboxPage> {
+    const ids = resolveIds(appId, appToken);
+    const perParam = options && options.perNotification ? '&perNotification=true' : '';
+
+    let response = await axios.get(`https://app.nativenotify.com/api/indie/notification/inbox/${subId}/${ids.appId}/${ids.appToken}?take=${take}&skip=${skip}${perParam}`, { timeout: REQUEST_TIMEOUT_MS });
 
     return {
         rows: Array.isArray(response.data) ? response.data : [],
@@ -818,9 +904,178 @@ export async function deleteIndieNotificationInbox(subId: any, notificationId: a
     return response.data;
 }
 
+// ---- sending notifications (rich-field passthrough, 2026-09-21) ------------
+// The server's send endpoints accept the rich Expo message fields
+// (subtitle/badge/ttl/interruptionLevel/categoryId/channelId/collapseId/
+// contentAvailable/mutableContent/sound) on every path — mass, indie, group
+// and followers. These helpers pass the caller's SendNotificationOptions
+// straight through (see sendUtils.ts), so an app — or an agent driving it —
+// can send the same modern messages the dashboard and the MCP server send.
+//
+// Sends are LIVE: every matched device receives them and they cannot be
+// recalled. Each helper resolves with the server's response body and throws
+// when the server rejects the send.
+
+/**
+ * Send ONE push notification to every registered device of the app (mass
+ * send) — LIVE, cannot be recalled. `options` carries the pushData JSON and
+ * the rich Expo message fields (subtitle, badge, ttl, interruptionLevel,
+ * categoryId, channelId, collapseId, contentAvailable, mutableContent, sound,
+ * bigPictureURL); unset fields keep the server defaults.
+ */
+export async function sendMassNotification(title: string, body: string, options: SendNotificationOptions = {}): Promise<any> {
+    const ids = resolveIds(options.appId, options.appToken);
+
+    const response = await axios.post('https://app.nativenotify.com/api/notification', {
+        appId: ids.appId,
+        appToken: ids.appToken,
+        title,
+        body,
+        ...buildSendPayload(options),
+    }, { timeout: REQUEST_TIMEOUT_MS });
+
+    return response.data;
+}
+
+/**
+ * Send a push notification to ONE individual-push subscriber (indie push) —
+ * LIVE. The subscriber must already be registered to this app (subID is your
+ * app's own user id for that person; see registerIndieID()). `options` works
+ * exactly like sendMassNotification()'s.
+ */
+export async function sendIndieNotification(subID: any, title: string, message: string, options: SendNotificationOptions = {}): Promise<any> {
+    const ids = resolveIds(options.appId, options.appToken);
+
+    const response = await axios.post('https://app.nativenotify.com/api/indie/notification', {
+        appId: ids.appId,
+        appToken: ids.appToken,
+        subID,
+        title,
+        message,
+        ...buildSendPayload(options),
+    }, { timeout: REQUEST_TIMEOUT_MS });
+
+    return response.data;
+}
+
+/**
+ * Send a push notification to a list of subscribers (group push) — LIVE. Use
+ * it for a custom audience you already hold as subIDs; for the followers of a
+ * follow-master use sendNotificationToFollowers() instead. `options` works
+ * exactly like sendMassNotification()'s.
+ *
+ * Throws when subIDs is not a non-empty array (an empty audience would be a
+ * silent no-op — better to hear about it before the send).
+ */
+export async function sendIndieGroupNotification(subIDs: any[], title: string, message: string, options: SendNotificationOptions = {}): Promise<any> {
+    if (!Array.isArray(subIDs) || subIDs.length === 0) {
+        throw new Error('[native-notify] sendIndieGroupNotification: subIDs must be a non-empty array.');
+    }
+    const ids = resolveIds(options.appId, options.appToken);
+
+    const response = await axios.post('https://app.nativenotify.com/api/indie/group/notification', {
+        appId: ids.appId,
+        appToken: ids.appToken,
+        subIDs,
+        title,
+        message,
+        ...buildSendPayload(options),
+    }, { timeout: REQUEST_TIMEOUT_MS });
+
+    return response.data;
+}
+
+/**
+ * Send a push notification to every follower of one follow-master subID (a
+ * user others follow) — LIVE. Different from a topic group: this is a single
+ * account's followers. Pair it with registerFollowMasterID() /
+ * registerFollowerID() to build the follow graph. `options` works exactly
+ * like sendMassNotification()'s.
+ */
+export async function sendNotificationToFollowers(masterSubID: any, title: string, message: string, options: SendNotificationOptions = {}): Promise<any> {
+    const ids = resolveIds(options.appId, options.appToken);
+
+    const response = await axios.post('https://app.nativenotify.com/api/follow/notification', {
+        appId: ids.appId,
+        appToken: ids.appToken,
+        masterSubID,
+        title,
+        message,
+        ...buildSendPayload(options),
+    }, { timeout: REQUEST_TIMEOUT_MS });
+
+    return response.data;
+}
+
+/** Options for setAndroidNotificationChannel() — only the keys you set are used. */
+export interface AndroidNotificationChannelOptions {
+    /** Human-readable channel name shown in Android settings (defaults to the channel id). */
+    name?: string;
+    /** Long description shown in Android settings. */
+    description?: string;
+    /** One of Notifications.AndroidImportance (MAX / HIGH / DEFAULT / LOW / MIN). */
+    importance?: any;
+    /** Custom sound file name (omit for the platform default). */
+    sound?: string | null;
+    /** Vibration pattern in ms, e.g. [0, 250, 250, 250]. */
+    vibrationPattern?: number[];
+    /** Notification LED color, e.g. '#FF231F7C'. */
+    lightColor?: string;
+    enableLights?: boolean;
+    enableVibrate?: boolean;
+    /** Show a badge dot on the app icon for this channel's notifications. */
+    showBadge?: boolean;
+}
+
+/**
+ * Create (or update) an Android notification channel — a thin wrapper over
+ * expo-notifications' Notifications.setNotificationChannelAsync(). Create a
+ * channel before sending a push with a matching `channelId`, so the
+ * notification routes to it (name/sound/importance/vibration are user-visible
+ * in Android's per-app notification settings).
+ *
+ *   await setAndroidNotificationChannel('alerts', {
+ *     name: 'Alerts',
+ *     importance: Notifications.AndroidImportance.HIGH,
+ *     sound: 'chime.wav',
+ *   });
+ *   await sendMassNotification('Heads up', 'The service is back', { channelId: 'alerts' });
+ *
+ * Resolves true when the channel was created; false on web/iOS (Android
+ * channels do not exist there) or when the call fails — it never throws.
+ */
+export async function setAndroidNotificationChannel(channelId: string, options: AndroidNotificationChannelOptions = {}): Promise<boolean> {
+    if (!channelId || Platform.OS !== 'android') return false;
+    try {
+        const setChannel = (Notifications as any).setNotificationChannelAsync;
+        if (typeof setChannel !== 'function') return false;
+
+        const channel: any = { name: options.name || channelId };
+        if (options.description !== undefined) channel.description = options.description;
+        if (options.importance !== undefined) channel.importance = options.importance;
+        if (options.sound !== undefined) channel.sound = options.sound;
+        if (options.vibrationPattern !== undefined) channel.vibrationPattern = options.vibrationPattern;
+        if (options.lightColor !== undefined) channel.lightColor = options.lightColor;
+        if (options.enableLights !== undefined) channel.enableLights = options.enableLights;
+        if (options.enableVibrate !== undefined) channel.enableVibrate = options.enableVibrate;
+        if (options.showBadge !== undefined) channel.showBadge = options.showBadge;
+
+        await setChannel(channelId, channel);
+        return true;
+    } catch (error) {
+        // Channel creation is best-effort — callers keep their default channel.
+        return false;
+    }
+}
+
 // Credentials config (NativeNotify.init / <NativeNotifyProvider> / useNativeNotify).
 export { NativeNotify, NativeNotifyProvider, useNativeNotify, configureAnalytics } from './context';
 export type { NativeNotifyConfig, NativeNotifyProviderProps, NativeNotifyAnalyticsConfig } from './context';
+
+// Send helpers (2026-09-21): the rich-field options shared by every send
+// function (sendMassNotification, sendIndieNotification,
+// sendIndieGroupNotification, sendNotificationToFollowers).
+export type { RichPushFields, SendNotificationOptions } from './sendUtils';
 
 // Analytics (opt-in): screen views, sessions, notification-open reports and
 // the stable device id (see the analytics flags on NativeNotify.init).

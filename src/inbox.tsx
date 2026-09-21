@@ -29,6 +29,11 @@
  * Behavior notes:
  * - Opening the inbox marks the notifications as read on the server (existing
  *   API behavior in both modes), so the red dot clears once it opens.
+ * - Opt into per-notification read state with `perNotificationRead`: the pages
+ *   are fetched with the row-level `read` flag (indie `?perNotification=true`,
+ *   mass `?expoToken=`), unread rows get a small dot, and each row is marked
+ *   read as it is opened — instead of the whole inbox being marked read on
+ *   fetch. Legacy behavior stays the default.
  * - The unread count is synced to the app icon badge
  *   (Notifications.setBadgeCountAsync); opt out with syncBadge={false}.
  * - Deleting is only available in "indie" mode. The mass delete endpoint
@@ -62,6 +67,8 @@ import {
     getIndieNotificationInboxPage,
     getUnreadIndieNotificationInboxCount,
     deleteIndieNotificationInbox,
+    markMassNotificationRead,
+    markIndieNotificationRead,
 } from './index';
 import type { InboxNotification } from './index';
 import { useNativeNotify } from './context';
@@ -107,6 +114,15 @@ export interface UseNotificationInboxOptions {
     /** Sync the unread count to the app icon badge (default true). */
     syncBadge?: boolean;
     /**
+     * Per-notification read state (2026-09-21). When true, pages are fetched
+     * with each row's real `read` flag — indie pages via `?perNotification=true`,
+     * mass pages via this device's `?expoToken=` — and rows are marked read as
+     * they are opened (markNotificationRead) instead of the whole inbox being
+     * marked read on fetch. Unread rows show a dot. Off by default: legacy
+     * behavior is unchanged.
+     */
+    perNotificationRead?: boolean;
+    /**
      * Internal: renders the hook inert (no fetching, no subscriptions). Used by
      * NotificationInboxBell to keep the hook call unconditional when the screen
      * it renders is given an already-built inbox instance.
@@ -123,11 +139,19 @@ export interface UseNotificationInboxResult {
     loadingMore: boolean;
     hasMore: boolean;
     error: string | null;
+    /** True when the hook was built with perNotificationRead (rows carry `read`). */
+    perNotificationRead: boolean;
     openInbox: () => void;
     refresh: () => void;
     refreshUnread: () => Promise<void>;
     loadMore: () => Promise<void>;
     deleteNotification: (notificationId: number | string) => Promise<boolean>;
+    /**
+     * Per-notification mode only: mark ONE row read (called when it is opened),
+     * flipping it locally and refreshing the unread count. Resolves false when
+     * the mode is off, the row has no id, or the server rejects the call.
+     */
+    markNotificationRead: (notification: InboxNotification) => Promise<boolean>;
 }
 
 /** Props for NotificationInboxScreen. */
@@ -140,6 +164,13 @@ export interface NotificationInboxScreenProps {
     take?: number;
     /** Sync the unread count to the app icon badge (default true). */
     syncBadge?: boolean;
+    /**
+     * Per-row unread dots + mark-on-open (2026-09-21). Fetch each row's real
+     * read state and mark rows read as they are opened — see
+     * useNotificationInbox(). Default false (legacy: the whole inbox is marked
+     * read when it opens).
+     */
+    perNotificationRead?: boolean;
     colors?: NotificationInboxTheme;
     title?: string;
     emptyText?: string;
@@ -233,6 +264,7 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         subId,
         take = 20,
         syncBadge = true,
+        perNotificationRead = false,
     } = cfg;
     const providerConfig = useNativeNotify();
     const appId = optionAppId ?? providerConfig.appId;
@@ -253,7 +285,7 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
     const hasMoreRef = useRef(true);
     const rowsRef = useRef<InboxNotification[]>([]);
     const configRef = useRef<any>({});
-    configRef.current = { appId, appToken, inboxMode, subId, take };
+    configRef.current = { appId, appToken, inboxMode, subId, take, perNotificationRead };
 
     const setRows = useCallback((rows: InboxNotification[]) => {
         rowsRef.current = rows;
@@ -320,16 +352,25 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
             setError(null);
         }
         try {
+            const pageOptions = current.perNotificationRead ? { perNotification: true } : undefined;
             const page = current.inboxMode === 'indie'
-                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, 0)
-                : await getNotificationInboxPage(current.appId, current.appToken, current.take, 0);
+                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, 0, pageOptions)
+                : await getNotificationInboxPage(current.appId, current.appToken, current.take, 0, pageOptions);
             const rows = Array.isArray(page && page.rows) ? page.rows : [];
             setRows(rows);
             skipRef.current = rows.length;
             setMore(computeHasMore({ skip: 0, received: rows.length, take: current.take, total: page ? page.total : null }));
-            // Opening the inbox marks everything read in both modes, so the
-            // dot clears as soon as the first page has loaded.
-            applyUnreadCount(0);
+            if (current.perNotificationRead) {
+                // The fetch did NOT mark the inbox read this time — rows carry
+                // their real read state and each one is marked as it opens
+                // (markNotificationRead), so take the count from the server
+                // instead of zeroing it.
+                refreshUnread();
+            } else {
+                // Opening the inbox marks everything read in both modes, so the
+                // dot clears as soon as the first page has loaded.
+                applyUnreadCount(0);
+            }
         } catch (e) {
             if (mountedRef.current) setError(describeError(e));
         } finally {
@@ -339,7 +380,7 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
                 setRefreshing(false);
             }
         }
-    }, [inert, setRows, setMore, applyUnreadCount]);
+    }, [inert, setRows, setMore, applyUnreadCount, refreshUnread]);
 
     const loadMore = useCallback(async () => {
         if (inert) return;
@@ -349,9 +390,10 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         if (mountedRef.current) setLoadingMore(true);
         try {
             const skip = skipRef.current;
+            const pageOptions = current.perNotificationRead ? { perNotification: true } : undefined;
             const page = current.inboxMode === 'indie'
-                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, skip)
-                : await getNotificationInboxPage(current.appId, current.appToken, current.take, skip);
+                ? await getIndieNotificationInboxPage(current.subId, current.appId, current.appToken, current.take, skip, pageOptions)
+                : await getNotificationInboxPage(current.appId, current.appToken, current.take, skip, pageOptions);
             const rows = Array.isArray(page && page.rows) ? page.rows : [];
             const seen: { [key: string]: boolean } = {};
             const next = rowsRef.current.slice();
@@ -410,6 +452,28 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         }
     }, [inert, setRows]);
 
+    // Per-notification mode only: mark ONE row read (called when it is
+    // opened). Flips the row locally and refreshes the unread count on
+    // success; resolves false in legacy mode / on failure; never throws.
+    const markNotificationRead = useCallback(async (notification: InboxNotification) => {
+        if (inert) return false;
+        const current = getConfig();
+        if (!current || !current.perNotificationRead || !notification) return false;
+        const id = notification.notification_id;
+        if (id === undefined || id === null) return false;
+        const ok = current.inboxMode === 'indie'
+            ? await markIndieNotificationRead(id, current.subId, current.appId, current.appToken)
+            : await markMassNotificationRead(id, current.appId, current.appToken);
+        if (ok) {
+            const next = rowsRef.current.map((row) => (
+                row && row.notification_id === id ? { ...row, read: true } : row
+            ));
+            setRows(next);
+            refreshUnread();
+        }
+        return ok;
+    }, [inert, setRows, refreshUnread]);
+
     useEffect(() => {
         mountedRef.current = true;
         return () => {
@@ -458,11 +522,13 @@ export function useNotificationInbox(options: UseNotificationInboxOptions): UseN
         loadingMore,
         hasMore,
         error,
+        perNotificationRead,
         openInbox,
         refresh,
         refreshUnread,
         loadMore,
         deleteNotification,
+        markNotificationRead,
     };
 }
 
@@ -470,17 +536,20 @@ interface NotificationRowProps {
     item: InboxNotification;
     theme: NotificationInboxTheme;
     canDelete: boolean;
+    /** Per-notification read mode: show the unread dot for this row. */
+    unread?: boolean;
     onPress?: (notification: InboxNotification) => void;
     onDelete: (notificationId: number | string) => Promise<boolean>;
 }
 
-function NotificationRow({ item, theme, canDelete, onPress, onDelete }: NotificationRowProps) {
+function NotificationRow({ item, theme, canDelete, unread, onPress, onDelete }: NotificationRowProps) {
     // The server maps date_sent -> date and push_data -> pushData in every
     // inbox response; the snake_case fallbacks cover any older/raw payloads.
     const dateText = formatDate(item ? item.date || item.date_sent : '');
     const inner = (
         <View>
             <View style={styles.rowTop}>
+                {unread ? <View style={[styles.rowDot, { backgroundColor: theme.dot }]} /> : null}
                 <Text style={[styles.rowTitle, { color: theme.title }]} numberOfLines={2}>
                     {item && item.title ? String(item.title) : 'Notification'}
                 </Text>
@@ -523,6 +592,7 @@ function NotificationRow({ item, theme, canDelete, onPress, onDelete }: Notifica
  * - mode              — 'mass' (default) or 'indie'.
  * - subId             — required when mode="indie".
  * - take              — page size (default 20).
+ * - perNotificationRead — per-row unread dots + mark-on-open (default false).
  * - colors            — partial theme override (see README).
  * - title, emptyText  — header title and empty-state text.
  * - allowDelete       — delete button per row; only ever shown in indie mode
@@ -541,6 +611,7 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
         subId,
         take = 20,
         syncBadge,
+        perNotificationRead,
         colors,
         title = 'Notifications',
         emptyText = "You're all caught up",
@@ -549,7 +620,7 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
     } = props || {} as NotificationInboxScreenProps;
 
     const inboxMode = mode === 'indie' ? 'indie' : 'mass';
-    const ownInbox = useNotificationInbox(providedInbox ? INERT_CONFIG : { appId, appToken, mode, subId, take, syncBadge });
+    const ownInbox = useNotificationInbox(providedInbox ? INERT_CONFIG : { appId, appToken, mode, subId, take, syncBadge, perNotificationRead });
     const inbox = providedInbox || ownInbox;
     const theme = useInboxTheme(colors);
     const canDelete = inboxMode === 'indie' && allowDelete !== false;
@@ -570,6 +641,18 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
     const handleClose = () => {
         if (typeof onClose === 'function') onClose();
     };
+
+    // In per-notification mode a tap marks the row read (fire-and-forget)
+    // before the consumer's handler runs; legacy mode keeps the old behavior
+    // (rows are only pressable when onNotificationPress is provided).
+    const withPerNotificationRead = !!inbox.perNotificationRead;
+    const handleRowPress = (item: InboxNotification) => {
+        if (withPerNotificationRead && typeof inbox.markNotificationRead === 'function') {
+            inbox.markNotificationRead(item);
+        }
+        if (typeof onNotificationPress === 'function') onNotificationPress(item);
+    };
+    const rowPress = (typeof onNotificationPress === 'function' || withPerNotificationRead) ? handleRowPress : undefined;
 
     let body;
     if (showLoading) {
@@ -614,7 +697,8 @@ export function NotificationInboxScreen(props: NotificationInboxScreenProps): an
                         item={item}
                         theme={theme}
                         canDelete={canDelete}
-                        onPress={onNotificationPress}
+                        unread={withPerNotificationRead && item.read === false}
+                        onPress={rowPress}
                         onDelete={inbox.deleteNotification}
                     />
                 )}
@@ -699,6 +783,7 @@ export function NotificationInboxBell(props: NotificationInboxBellProps): any {
         subId: screenProps.subId,
         take: screenProps.take,
         syncBadge: screenProps.syncBadge,
+        perNotificationRead: screenProps.perNotificationRead,
     });
     const theme = useInboxTheme(screenProps.colors);
     const count = inbox.unreadCount || 0;
@@ -798,6 +883,7 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     rowTop: { flexDirection: 'row', alignItems: 'flex-start' },
+    rowDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5, marginRight: 8 },
     rowTitle: { flex: 1, fontSize: 15, fontWeight: '600', marginRight: 8 },
     rowDate: { fontSize: 12 },
     rowMessage: { marginTop: 4, fontSize: 14, lineHeight: 20 },

@@ -198,6 +198,8 @@ options={{
 
 Opening the inbox marks the fetched notifications as read on the server (existing API behavior), so the red dot clears when it opens. The unread count is also synced to the app icon badge (opt out with `syncBadge={false}`). The **Delete** button is only shown in `indie` mode — mass deletion is an admin action that removes a notification for every user, so it is intentionally not exposed.
 
+Want per-row read state instead? Pass `perNotificationRead` — pages are fetched with each row's real `read` flag (indie via `?perNotification=true`; mass via this device's Expo push token), unread rows get a small dot, and each row is marked read as it is opened. Existing behavior stays the default.
+
 ## Props
 
 `NotificationInboxBell` and `NotificationInboxScreen` (plus the headless `useNotificationInbox` hook):
@@ -210,6 +212,7 @@ Opening the inbox marks the fetched notifications as read on the server (existin
 | `subId` | — | Required when `mode='indie'` |
 | `take` | `20` | Page size |
 | `syncBadge` | `true` | Sync the unread count to the app icon badge |
+| `perNotificationRead` | `false` | Per-row unread dots + mark-on-open (`read` flag per row instead of marking the whole inbox read on fetch) |
 | `colors` | theme defaults | Partial override, e.g. `{ dot: '#EF4444', accent: '#2563EB' }` |
 | `title` | `'Notifications'` | Header title |
 | `emptyText` | `"You're all caught up"` | Empty-state body text |
@@ -227,7 +230,57 @@ Want your own trigger? Render `NotificationInboxScreen` and control `visible` / 
 
 Exact pagination is available for custom UIs: `getNotificationInboxPage()` and `getIndieNotificationInboxPage()` return `{ rows, total }` (the server's `X-Total-Count`), so "load more" is exact instead of a guess.
 
+Per-notification read state is available for custom UIs too: pass `{ perNotification: true }` as the last argument to either page function to get each row's real `read` boolean (indie adds `?perNotification=true`; mass adds this device's `?expoToken=`) and skip the legacy "mark everything read on fetch" — then call `markMassNotificationRead(notificationId)` / `markIndieNotificationRead(notificationId, subId)` as rows are opened.
+
+# Sending notifications (rich fields)
+
+The send helpers send through your Native Notify account — the same messages the dashboard and the hosted MCP server can send, with the modern Expo message fields passed straight through to every path (mass, indie, group, followers). **Sends are live and cannot be recalled.**
+
+```ts
+import { sendMassNotification, sendIndieNotification } from 'native-notify';
+
+// Every registered device (mass):
+await sendMassNotification('Service update', 'We are back online.', {
+  pushData: { url: '/status' },
+  subtitle: 'All systems normal',
+  channelId: 'alerts',          // Android channel (create it first — below)
+  interruptionLevel: 'active',  // iOS
+  sound: 'chime.wav',
+});
+
+// One subscriber (indie):
+await sendIndieNotification(userId, 'Your order', 'It shipped!', {
+  pushData: { url: '/orders/' + orderId },
+  badge: 1,
+  categoryId: 'ORDER_UPDATE',
+});
+
+// A custom audience, or the followers of a follow-master:
+await sendIndieGroupNotification(subIds, 'Group news', 'Hello all', { channelId: 'news' });
+await sendNotificationToFollowers(masterSubId, 'New post', 'Read it', { mutableContent: true });
+```
+
+Every send helper takes the same options object: `pushData`, the rich Expo fields — `subtitle`, `badge`, `ttl`, `interruptionLevel` (`'passive' | 'active' | 'timeSensitive' | 'critical'`), `categoryId`, `channelId`, `collapseId`, `contentAvailable`, `mutableContent`, `sound` (`false` = silent push) — plus `bigPictureURL` (Android big picture / iOS attachment source) and optional `appId` / `appToken` overrides. Unset fields keep the server defaults, and the request body carries only what you set (`sound: false` and `badge: 0` are values, not omissions). Each helper resolves with the server's response and throws when the send is rejected. `sendIndieGroupNotification` also throws up front when the `subIDs` array is empty.
+
+Create the Android channels your `channelId` values refer to (a thin wrapper over expo-notifications' `setNotificationChannelAsync`):
+
+```ts
+import * as Notifications from 'expo-notifications';
+import { setAndroidNotificationChannel } from 'native-notify';
+
+await setAndroidNotificationChannel('alerts', {
+  name: 'Alerts',
+  importance: Notifications.AndroidImportance.HIGH,
+  sound: 'chime.wav',
+  vibrationPattern: [0, 250, 250, 250],
+});
+```
+
+Resolves `true` on Android; `false` on iOS/web (Android channels do not exist there) or on failure — it never throws.
+
 ## Upgrading
+
+**Unreleased (additive, next 5.x)** — server-capability wave. New: per-notification inbox read state (`perNotificationRead` on the inbox components + hook, `{ perNotification: true }` on `getNotificationInboxPage` / `getIndieNotificationInboxPage`, `markMassNotificationRead` / `markIndieNotificationRead`), rich-field send helpers (`sendMassNotification`, `sendIndieNotification`, `sendIndieGroupNotification`, `sendNotificationToFollowers`, `setAndroidNotificationChannel`) and their types (`RichPushFields`, `SendNotificationOptions`, `AndroidNotificationChannelOptions`, `PerNotificationReadOptions`; `useNotificationInbox()` also returns `perNotificationRead` + `markNotificationRead`). No breaking changes — every existing call still makes its exact same request.
 
 **v5.1.1** — fixes an infinite re-registration loop: the token-rotation listener could re-fetch the device push token, which re-fires the listener (expo-notifications documents the footgun) — a stuck app would hammer `/api/device/tokens` thousands of times per second. The listener now skips same-token no-op events, throttles to at most one check per minute, and only re-posts when the tokens actually changed. No API changes.
 
