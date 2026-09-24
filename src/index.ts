@@ -6,7 +6,7 @@ import Constants from "expo-constants";
 
 import { NativeNotify, useNativeNotify, configureAnalytics } from './context';
 import { readTotalCount } from './inboxUtils';
-import { buildSendPayload } from './sendUtils';
+import { buildSendPayload, legacyDateSent } from './sendUtils';
 import type { SendNotificationOptions } from './sendUtils';
 import {
     getRegistrationMeta,
@@ -935,6 +935,10 @@ export async function sendMassNotification(title: string, body: string, options:
         appToken: ids.appToken,
         title,
         body,
+        // The mass endpoint stores the inbox date exactly as the caller sends
+        // it (the indie/group paths stamp their own), so without this every
+        // inbox row of an SDK send had no date.
+        dateSent: legacyDateSent(),
         ...buildSendPayload(options),
     }, { timeout: REQUEST_TIMEOUT_MS });
 

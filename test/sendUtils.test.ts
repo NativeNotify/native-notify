@@ -7,9 +7,11 @@ import { test } from 'node:test';
 
 import {
     buildSendPayload,
+    legacyDateSent,
     RICH_PUSH_FIELD_NAMES,
 } from '../src/sendUtils';
 import type { SendNotificationOptions } from '../src/sendUtils';
+import { parseDateValue } from '../src/inboxUtils';
 
 test('buildSendPayload passes every rich field through untouched', () => {
     const options: SendNotificationOptions = {
@@ -103,4 +105,19 @@ test('RICH_PUSH_FIELD_NAMES covers exactly the ten documented rich fields', () =
         'mutableContent',
         'sound',
     ]);
+});
+
+test('legacyDateSent matches the server/dashboard inbox date format (device-local time)', () => {
+    assert.equal(legacyDateSent(new Date(2026, 8, 24, 0, 5)), '9-24-2026 0:05AM');
+    assert.equal(legacyDateSent(new Date(2026, 8, 24, 9, 30)), '9-24-2026 9:30AM');
+    assert.equal(legacyDateSent(new Date(2026, 8, 24, 12, 0)), '9-24-2026 12:00PM');
+    assert.equal(legacyDateSent(new Date(2026, 0, 3, 13, 7)), '1-3-2026 1:07PM');
+    assert.equal(legacyDateSent(new Date(2026, 11, 31, 23, 59)), '12-31-2026 11:59PM');
+});
+
+test('legacyDateSent round-trips through the inbox date parser', () => {
+    const when = new Date(2026, 8, 24, 15, 42);
+    const parsed = parseDateValue(legacyDateSent(when));
+    assert.ok(parsed);
+    assert.equal(parsed!.getTime(), when.getTime());
 });
