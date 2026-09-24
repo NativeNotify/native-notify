@@ -39,8 +39,9 @@ export interface InboxNotification<TData = any> {
      * Per-notification read state (2026-09-21). Only authoritative when the
      * page was fetched with per-notification read state: indie pages with
      * `{ perNotification: true }`, mass pages with `{ perNotification: true }`
-     * on a device with a push token. On legacy fetches every row reports
-     * `false` (the whole inbox is marked read on fetch instead).
+     * on a device with a push token. On legacy fetches it carries no per-row
+     * state — the whole inbox is marked read on fetch instead, so indie rows
+     * come back `true` and mass rows `false`.
      */
     read?: boolean;
     [key: string]: any;
@@ -933,8 +934,11 @@ export async function deleteIndieNotificationInbox(subId: any, notificationId: a
 // can send the same modern messages the dashboard and the MCP server send.
 //
 // Sends are LIVE: every matched device receives them and they cannot be
-// recalled. Each helper resolves with the server's response body and throws
-// when the server rejects the send.
+// recalled. Each helper resolves with the server's response body ("Success!"
+// when the push went out) and throws on an error status (400 for a missing
+// title/body or an invalid field). Some non-deliveries still answer 201 with
+// an explanation instead — a trial-expired account, an indie subID that is
+// not registered, a follow-master without followers — so check the body.
 
 /**
  * Send ONE push notification to every registered device of the app (mass
