@@ -352,6 +352,19 @@ test('indie pages add ?perNotification=true only when asked, and mark one row re
     });
 });
 
+test('mark-read helpers send nothing without a notificationId (the endpoint would mark EVERY notification read)', async () => {
+    // Both POST handlers treat a missing/falsy notificationId as the legacy
+    // bulk form — "mark every notification read" for the device / the sub —
+    // so a one-row mark called with row.id (undefined; the field is
+    // notification_id) would silently clear the whole inbox and resolve true.
+    for (const missing of [undefined, null, 0, '']) {
+        axiosCalls.length = 0;
+        assert.equal(await nn.markMassNotificationRead(missing, 4547, 'tok'), false);
+        assert.equal(await nn.markIndieNotificationRead(missing, 'sub-1', 4547, 'tok'), false);
+        assert.equal(axiosCalls.length, 0, `no request for notificationId=${JSON.stringify(missing)}`);
+    }
+});
+
 // ---- open reporting ----------------------------------------------------------
 
 test('reportNotificationOpen is a no-op until analytics.opens is enabled', async () => {

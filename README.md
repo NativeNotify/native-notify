@@ -230,7 +230,7 @@ Want your own trigger? Render `NotificationInboxScreen` and control `visible` / 
 
 Exact pagination is available for custom UIs: `getNotificationInboxPage()` and `getIndieNotificationInboxPage()` return `{ rows, total }` (the server's `X-Total-Count`), so "load more" is exact instead of a guess.
 
-Per-notification read state is available for custom UIs too: pass `{ perNotification: true }` as the last argument to either page function to get each row's real `read` boolean (indie adds `?perNotification=true`; mass adds this device's `?expoToken=`) and skip the legacy "mark everything read on fetch" — then call `markMassNotificationRead(notificationId)` / `markIndieNotificationRead(notificationId, subId)` as rows are opened.
+Per-notification read state is available for custom UIs too: pass `{ perNotification: true }` as the last argument to either page function to get each row's real `read` boolean (indie adds `?perNotification=true`; mass adds this device's `?expoToken=`) and skip the legacy "mark everything read on fetch" — then call `markMassNotificationRead(notificationId)` / `markIndieNotificationRead(notificationId, subId)` as rows are opened (pass the row's `notification_id`; without one they resolve `false` and send nothing, since the endpoint's id-less form marks the whole inbox read).
 
 # Sending notifications (rich fields)
 

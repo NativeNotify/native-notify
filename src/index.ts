@@ -827,11 +827,14 @@ export interface PerNotificationReadOptions {
 /**
  * Mark ONE mass-inbox notification read for this device (2026-09-21; pair
  * with getNotificationInboxPage(..., { perNotification: true })). Best-effort
- * — resolves false when there is no device token or the server rejects the
- * call; never throws.
+ * — resolves false when there is no notificationId or device token, or the
+ * server rejects the call; never throws.
  */
 export async function markMassNotificationRead(notificationId: any, appId?: any, appToken?: any): Promise<boolean> {
     const ids = resolveIds(appId, appToken);
+    // No id, no request: without a notificationId the endpoint takes its
+    // legacy bulk form and marks EVERY notification read for this device.
+    if (!notificationId) return false;
     if (Platform.OS === 'web') return false;
     try {
         const token = await getExpoPushTokenSafe();
@@ -851,10 +854,13 @@ export async function markMassNotificationRead(notificationId: any, appId?: any,
 /**
  * Mark ONE indie-inbox notification read (2026-09-21; pair with
  * getIndieNotificationInboxPage(..., { perNotification: true })). Best-effort
- * — resolves false on any failure; never throws.
+ * — resolves false without a notificationId and on any failure; never throws.
  */
 export async function markIndieNotificationRead(notificationId: any, subId?: any, appId?: any, appToken?: any): Promise<boolean> {
     const ids = resolveIds(appId, appToken);
+    // No id, no request: without a notificationId the endpoint takes its
+    // legacy bulk form and marks EVERY notification of the sub read.
+    if (!notificationId) return false;
     try {
         await axios.post(`https://app.nativenotify.com/api/indie/notification/inbox/read`, {
             appId: ids.appId,
