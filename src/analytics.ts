@@ -30,7 +30,7 @@
  * into the app, and requests are batched/throttled (screen views flush after
  * a short delay; consecutive duplicates collapse).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import axios from 'axios';
 import Constants from 'expo-constants';
@@ -254,13 +254,22 @@ export function useNativeNotifyScreenTracking(getScreen?: () => string | undefin
     const pathname = expoRouter && typeof expoRouter.usePathname === 'function'
         ? expoRouter.usePathname()
         : undefined;
+    const lastTracked = useRef<string | null>(null);
 
+    // Runs after every render, not only when the expo-router pathname
+    // changes: a getScreen reader (React Navigation, anything else) has no
+    // pathname to change, so an effect keyed on it tracked the first screen
+    // only. A name is reported only when it differs from the last one this
+    // hook reported, so re-renders on the same screen stay one view. The
+    // reader is still called here, after commit, where navigation refs are
+    // attached.
     useEffect(() => {
         if (!NativeNotify.getAnalyticsConfig().screens) return;
         const name = getScreen ? getScreen() : pathname;
-        if (name) trackScreen(name);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pathname]);
+        if (!name || name === lastTracked.current) return;
+        lastTracked.current = name;
+        trackScreen(name);
+    });
 }
 
 // ---- sessions --------------------------------------------------------------
