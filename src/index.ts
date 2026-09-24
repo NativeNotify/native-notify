@@ -11,6 +11,7 @@ import type { SendNotificationOptions } from './sendUtils';
 import {
     getRegistrationMeta,
     reportNotificationOpen,
+    setAnalyticsAppIds,
     setAnalyticsPushToken,
     startSessionAutoTracking,
 } from './analytics';
@@ -266,8 +267,11 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
         if (Platform.OS === 'web') return;
 
         const opts = options || {};
-        // Merge this call's analytics flags (read at mount, like `options`).
+        // Merge this call's analytics flags (read at mount, like `options`),
+        // and let the analytics reports use this call's ids when
+        // NativeNotify.init() was not given any.
         configureAnalytics(opts.analytics);
+        setAnalyticsAppIds(config.appId, config.appToken);
         let cancelled = false;
 
         // Guard state for the token-rotation listener below. Our own

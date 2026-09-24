@@ -68,7 +68,26 @@ let recentOpenReports: OpenReport[] = [];
 let sessionId: string | null = null;
 let sessionStartedAt = 0;
 
+// The ids registerNNPushToken() was called with (its arguments or
+// <NativeNotifyProvider>). Reports use NativeNotify.init() ids first and fall
+// back to these, so the documented "keep everything on the registration call"
+// setup — registerNNPushToken(appId, appToken, { analytics }) with no init —
+// actually reports. Without the fallback every report was silently dropped.
+let registrationIds: { appId?: any; appToken?: any } = {};
+
 // ---- shared helpers --------------------------------------------------------
+
+/** Remember the ids registerNNPushToken() registered with (internal). */
+export function setAnalyticsAppIds(appId?: any, appToken?: any): void {
+    if (appId && appToken) registrationIds = { appId, appToken };
+}
+
+/** The ids analytics reports are sent with: NativeNotify.init() first, then registration. */
+function analyticsIds(): { appId?: any; appToken?: any } {
+    const config = NativeNotify.getConfig();
+    if (config.appId && config.appToken) return { appId: config.appId, appToken: config.appToken };
+    return registrationIds;
+}
 
 /** Remember this device's Expo push token (used as device context on reports). */
 export function setAnalyticsPushToken(token?: string | null): void {
@@ -186,7 +205,7 @@ export function flushScreenQueue(): void {
     if (batch.length === 0) return;
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         const events = batch.map((screenName) => ({ screenName, ...context }));
@@ -273,7 +292,7 @@ export function endSessionTracking(): void {
     flushScreenQueue();
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         try {
@@ -345,7 +364,7 @@ export function reportNotificationOpen(pushData?: any): void {
     if (result.isDuplicate) return;
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         try {
