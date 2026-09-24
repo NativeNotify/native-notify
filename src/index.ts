@@ -263,15 +263,25 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
 
     const responseListener = useRef<any>(undefined);
 
+    // Merge this call's analytics flags (read at mount, like `options`), and
+    // let the analytics reports use this call's ids when NativeNotify.init()
+    // was not given any. Done while RENDERING, once per mount, not in the
+    // effect below: React runs child effects before parent effects, so a
+    // component under this one — useNativeNotifyPress() reading the
+    // cold-start tap, useNativeNotifyScreenTracking() tracking the first
+    // screen — would report before the flags and ids existed, and those
+    // events were dropped for good. Both calls are idempotent merges.
+    const analyticsApplied = useRef<boolean>(false);
+    if (!analyticsApplied.current && Platform.OS !== 'web') {
+        analyticsApplied.current = true;
+        configureAnalytics((options || {}).analytics);
+        setAnalyticsAppIds(config.appId, config.appToken);
+    }
+
     useEffect(() => {
         if (Platform.OS === 'web') return;
 
         const opts = options || {};
-        // Merge this call's analytics flags (read at mount, like `options`),
-        // and let the analytics reports use this call's ids when
-        // NativeNotify.init() was not given any.
-        configureAnalytics(opts.analytics);
-        setAnalyticsAppIds(config.appId, config.appToken);
         let cancelled = false;
 
         // Guard state for the token-rotation listener below. Our own
