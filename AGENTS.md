@@ -99,6 +99,10 @@ updates are made in the same wave, automatically — never wait to be asked.
 
 - Source in `src/` (`index.ts`, `inbox.tsx`, `analytics.ts`, `context.tsx`,
   utils), compiled with `tsc` to `dist/`. Ships `dist/` + `README.md` only.
+- Registration reports the device's Expo + native token pair as the optional
+  `devicePair` field (`src/devicePair.ts`; both registration payloads) — the
+  server records it and skips the duplicate Expo copy of a group push. Keep
+  it optional/omitted-when-incomplete: old servers and old SDKs stay valid.
 - Checks: `npm run build`, `npm run typecheck` (both tsconfigs), `npm test`
   (`tsx --test test/*.test.ts`; fake fetch at the boundary, no network).
 - Versioning: breaking changes bump major (v5 added `NativeNotify.init` /

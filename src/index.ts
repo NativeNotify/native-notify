@@ -6,6 +6,7 @@ import Constants from "expo-constants";
 
 import { NativeNotify, useNativeNotify, configureAnalytics } from './context';
 import { readTotalCount } from './inboxUtils';
+import { withDevicePair } from './devicePair';
 import { buildSendPayload, legacyDateSent } from './sendUtils';
 import type { SendNotificationOptions } from './sendUtils';
 import {
@@ -318,6 +319,11 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
                 fcmToken: result.fcmToken,
                 expoIosToken: result.expoIosToken,
                 apnToken: result.apnToken,
+                // Paired-token registration (2026-09-29): the same device's
+                // Expo + native token, reported together as one pair. New,
+                // OPTIONAL field — `{}` when either token is missing, so old
+                // servers and old devices see the exact same request.
+                ...withDevicePair(Platform.OS, result.expoPushToken, result.devicePushToken),
                 ...meta,
             });
         };
@@ -451,6 +457,11 @@ export async function registerIndieID(subID: any, appId?: any, appToken?: any): 
                 platformOS: Platform.OS,
                 expoToken,
                 deviceToken,
+                // Paired-token registration (2026-09-29): this device's Expo
+                // token and native token, reported together as one pair. New,
+                // OPTIONAL field — omitted when either token is missing (the
+                // body stays exactly what previous versions sent).
+                ...withDevicePair(Platform.OS, expoToken, deviceToken),
                 ...meta
             }, { timeout: REQUEST_TIMEOUT_MS })
             .then(() => console.log('You successfully registered your Indie ID.'))
