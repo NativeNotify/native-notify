@@ -108,6 +108,26 @@ registerNNPushToken(yourAppId, 'yourAppToken', {
 
 Token registration retries once on failure, has a 10s timeout, and automatically re-registers when the device push token rotates (Android reinstall / applicationId change, iOS backup restore). On Android in Expo Go you get a clear log message instead of a cryptic native error. You can also run the raw flow yourself — `const result = await registerForPushNotificationsAsync();` — it never throws, it reports (`{ status, reason, expoPushToken, ... }`).
 
+### Paired-token registration (v5.3.0+)
+
+One device can hold **both** an Expo push token and a native (FCM / APNs) push token, and registration now tells the server they belong to the **same device** by sending them together as one optional pair:
+
+```
+{
+  "expoToken": "ExponentPushToken[...]",   // the device's Expo push token
+  "nativeToken": "<fcm-or-apns-token>",    // the same device's native push token
+  "platform": "android" | "ios"
+}
+```
+
+This is sent automatically by `registerNNPushToken` (as `devicePair` on `POST /api/device/tokens`) and by `registerIndieID` (as `devicePair` on `POST /api/indie/id`) — **you do not have to do anything**. It is purely additive:
+
+- **Older servers** ignore the field; the request still carries the tokens it always carried.
+- **Older SDK versions** keep working; the server infers the same pair from the `expoToken` + `deviceToken` a single registration already sends.
+- A device that is missing one of the two tokens sends a body **identical** to previous versions (the field is simply omitted).
+
+The server uses the pair to deliver **one copy** of group / topic-group / follow pushes to a device that is registered with both token kinds (previously such a device received two copies of the same notification). The Expo copy is only skipped once the app's native push credentials have recently passed their live check; anything uncertain keeps the previous behavior. You can also build the pair yourself with the exported `buildDevicePair(platform, expoToken, nativeToken)` / `withDevicePair(...)` helpers.
+
 # Use
 The registerNNPushToken function will register your user's Native Notify push notification token and will return a data object. You can then send your users push notifications in the https://NativeNotify.com push notification portal.
 <br/><br/>
