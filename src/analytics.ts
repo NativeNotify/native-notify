@@ -30,7 +30,7 @@
  * into the app, and requests are batched/throttled (screen views flush after
  * a short delay; consecutive duplicates collapse).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import axios from 'axios';
 import Constants from 'expo-constants';
@@ -68,7 +68,26 @@ let recentOpenReports: OpenReport[] = [];
 let sessionId: string | null = null;
 let sessionStartedAt = 0;
 
+// The ids registerNNPushToken() was called with (its arguments or
+// <NativeNotifyProvider>). Reports use NativeNotify.init() ids first and fall
+// back to these, so the documented "keep everything on the registration call"
+// setup — registerNNPushToken(appId, appToken, { analytics }) with no init —
+// actually reports. Without the fallback every report was silently dropped.
+let registrationIds: { appId?: any; appToken?: any } = {};
+
 // ---- shared helpers --------------------------------------------------------
+
+/** Remember the ids registerNNPushToken() registered with (internal). */
+export function setAnalyticsAppIds(appId?: any, appToken?: any): void {
+    if (appId && appToken) registrationIds = { appId, appToken };
+}
+
+/** The ids analytics reports are sent with: NativeNotify.init() first, then registration. */
+function analyticsIds(): { appId?: any; appToken?: any } {
+    const config = NativeNotify.getConfig();
+    if (config.appId && config.appToken) return { appId: config.appId, appToken: config.appToken };
+    return registrationIds;
+}
 
 /** Remember this device's Expo push token (used as device context on reports). */
 export function setAnalyticsPushToken(token?: string | null): void {
@@ -186,7 +205,7 @@ export function flushScreenQueue(): void {
     if (batch.length === 0) return;
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         const events = batch.map((screenName) => ({ screenName, ...context }));
@@ -235,13 +254,22 @@ export function useNativeNotifyScreenTracking(getScreen?: () => string | undefin
     const pathname = expoRouter && typeof expoRouter.usePathname === 'function'
         ? expoRouter.usePathname()
         : undefined;
+    const lastTracked = useRef<string | null>(null);
 
+    // Runs after every render, not only when the expo-router pathname
+    // changes: a getScreen reader (React Navigation, anything else) has no
+    // pathname to change, so an effect keyed on it tracked the first screen
+    // only. A name is reported only when it differs from the last one this
+    // hook reported, so re-renders on the same screen stay one view. The
+    // reader is still called here, after commit, where navigation refs are
+    // attached.
     useEffect(() => {
         if (!NativeNotify.getAnalyticsConfig().screens) return;
         const name = getScreen ? getScreen() : pathname;
-        if (name) trackScreen(name);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pathname]);
+        if (!name || name === lastTracked.current) return;
+        lastTracked.current = name;
+        trackScreen(name);
+    });
 }
 
 // ---- sessions --------------------------------------------------------------
@@ -273,7 +301,7 @@ export function endSessionTracking(): void {
     flushScreenQueue();
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         try {
@@ -345,7 +373,7 @@ export function reportNotificationOpen(pushData?: any): void {
     if (result.isDuplicate) return;
 
     (async () => {
-        const ids = NativeNotify.getConfig();
+        const ids = analyticsIds();
         if (!ids.appId || !ids.appToken) return;
         const context = await deviceContext();
         try {

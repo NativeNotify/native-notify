@@ -6,11 +6,12 @@ import Constants from "expo-constants";
 
 import { NativeNotify, useNativeNotify, configureAnalytics } from './context';
 import { readTotalCount } from './inboxUtils';
-import { buildSendPayload } from './sendUtils';
+import { buildSendPayload, legacyDateSent } from './sendUtils';
 import type { SendNotificationOptions } from './sendUtils';
 import {
     getRegistrationMeta,
     reportNotificationOpen,
+    setAnalyticsAppIds,
     setAnalyticsPushToken,
     startSessionAutoTracking,
 } from './analytics';
@@ -38,8 +39,9 @@ export interface InboxNotification<TData = any> {
      * Per-notification read state (2026-09-21). Only authoritative when the
      * page was fetched with per-notification read state: indie pages with
      * `{ perNotification: true }`, mass pages with `{ perNotification: true }`
-     * on a device with a push token. On legacy fetches every row reports
-     * `false` (the whole inbox is marked read on fetch instead).
+     * on a device with a push token. On legacy fetches it carries no per-row
+     * state — the whole inbox is marked read on fetch instead, so indie rows
+     * come back `true` and mass rows `false`.
      */
     read?: boolean;
     [key: string]: any;
@@ -262,12 +264,25 @@ export default function registerNNPushToken(appId?: any, appToken?: any, options
 
     const responseListener = useRef<any>(undefined);
 
+    // Merge this call's analytics flags (read at mount, like `options`), and
+    // let the analytics reports use this call's ids when NativeNotify.init()
+    // was not given any. Done while RENDERING, once per mount, not in the
+    // effect below: React runs child effects before parent effects, so a
+    // component under this one — useNativeNotifyPress() reading the
+    // cold-start tap, useNativeNotifyScreenTracking() tracking the first
+    // screen — would report before the flags and ids existed, and those
+    // events were dropped for good. Both calls are idempotent merges.
+    const analyticsApplied = useRef<boolean>(false);
+    if (!analyticsApplied.current && Platform.OS !== 'web') {
+        analyticsApplied.current = true;
+        configureAnalytics((options || {}).analytics);
+        setAnalyticsAppIds(config.appId, config.appToken);
+    }
+
     useEffect(() => {
         if (Platform.OS === 'web') return;
 
         const opts = options || {};
-        // Merge this call's analytics flags (read at mount, like `options`).
-        configureAnalytics(opts.analytics);
         let cancelled = false;
 
         // Guard state for the token-rotation listener below. Our own
@@ -823,11 +838,14 @@ export interface PerNotificationReadOptions {
 /**
  * Mark ONE mass-inbox notification read for this device (2026-09-21; pair
  * with getNotificationInboxPage(..., { perNotification: true })). Best-effort
- * — resolves false when there is no device token or the server rejects the
- * call; never throws.
+ * — resolves false when there is no notificationId or device token, or the
+ * server rejects the call; never throws.
  */
 export async function markMassNotificationRead(notificationId: any, appId?: any, appToken?: any): Promise<boolean> {
     const ids = resolveIds(appId, appToken);
+    // No id, no request: without a notificationId the endpoint takes its
+    // legacy bulk form and marks EVERY notification read for this device.
+    if (!notificationId) return false;
     if (Platform.OS === 'web') return false;
     try {
         const token = await getExpoPushTokenSafe();
@@ -847,10 +865,13 @@ export async function markMassNotificationRead(notificationId: any, appId?: any,
 /**
  * Mark ONE indie-inbox notification read (2026-09-21; pair with
  * getIndieNotificationInboxPage(..., { perNotification: true })). Best-effort
- * — resolves false on any failure; never throws.
+ * — resolves false without a notificationId and on any failure; never throws.
  */
 export async function markIndieNotificationRead(notificationId: any, subId?: any, appId?: any, appToken?: any): Promise<boolean> {
     const ids = resolveIds(appId, appToken);
+    // No id, no request: without a notificationId the endpoint takes its
+    // legacy bulk form and marks EVERY notification of the sub read.
+    if (!notificationId) return false;
     try {
         await axios.post(`https://app.nativenotify.com/api/indie/notification/inbox/read`, {
             appId: ids.appId,
@@ -913,8 +934,11 @@ export async function deleteIndieNotificationInbox(subId: any, notificationId: a
 // can send the same modern messages the dashboard and the MCP server send.
 //
 // Sends are LIVE: every matched device receives them and they cannot be
-// recalled. Each helper resolves with the server's response body and throws
-// when the server rejects the send.
+// recalled. Each helper resolves with the server's response body ("Success!"
+// when the push went out) and throws on an error status (400 for a missing
+// title/body or an invalid field). Some non-deliveries still answer 201 with
+// an explanation instead — a trial-expired account, an indie subID that is
+// not registered, a follow-master without followers — so check the body.
 
 /**
  * Send ONE push notification to every registered device of the app (mass
@@ -931,6 +955,10 @@ export async function sendMassNotification(title: string, body: string, options:
         appToken: ids.appToken,
         title,
         body,
+        // The mass endpoint stores the inbox date exactly as the caller sends
+        // it (the indie/group paths stamp their own), so without this every
+        // inbox row of an SDK send had no date.
+        dateSent: legacyDateSent(),
         ...buildSendPayload(options),
     }, { timeout: REQUEST_TIMEOUT_MS });
 

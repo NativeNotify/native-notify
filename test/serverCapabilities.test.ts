@@ -126,6 +126,14 @@ Module._load = function (request: string, parent: any, isMain: boolean) {
 const nn: typeof import('../src/index') = require('../src/index');
 
 const lastCall = () => axiosCalls[axiosCalls.length - 1];
+// Mass sends carry the inbox date in the legacy "M-D-YYYY H:MMAM" format
+// (device-local time); pin its shape, then compare the rest exactly.
+const LEGACY_DATE_RE = /^\d{1,2}-\d{1,2}-\d{4} \d{1,2}:\d{2}(AM|PM)$/;
+const withDateSent = (data: any) => {
+    const sent = axiosCalls[0] && axiosCalls[0].data ? axiosCalls[0].data.dateSent : undefined;
+    assert.match(String(sent), LEGACY_DATE_RE, 'mass sends stamp dateSent for the inbox row');
+    return { ...data, dateSent: sent };
+};
 const expectPost = (url: string, data: any) => {
     assert.equal(axiosCalls.length, 1, 'exactly one request expected');
     assert.equal(axiosCalls[0].method, 'post');
@@ -154,7 +162,7 @@ test('sendMassNotification passes every rich field through to /api/notification'
         sound: 'chime.wav',
     });
 
-    expectPost('https://app.nativenotify.com/api/notification', {
+    expectPost('https://app.nativenotify.com/api/notification', withDateSent({
         appId: 4547,
         appToken: 'tok',
         title: 'Weekly update',
@@ -171,7 +179,7 @@ test('sendMassNotification passes every rich field through to /api/notification'
         contentAvailable: true,
         mutableContent: true,
         sound: 'chime.wav',
-    });
+    }));
     assert.deepEqual(response, { message: 'ok' });
 });
 
@@ -183,23 +191,23 @@ test('sendMassNotification keeps falsy-but-set fields and omits unset ones', asy
         sound: false,
         badge: 0,
     });
-    expectPost('https://app.nativenotify.com/api/notification', {
+    expectPost('https://app.nativenotify.com/api/notification', withDateSent({
         appId: 1,
         appToken: 'tok',
         title: 'Silent',
         body: 'No sound, no badge',
         sound: false,
         badge: 0,
-    });
+    }));
 
     axiosCalls.length = 0;
     await nn.sendMassNotification('Plain', 'Body', { appId: 1, appToken: 'tok' });
-    expectPost('https://app.nativenotify.com/api/notification', {
+    expectPost('https://app.nativenotify.com/api/notification', withDateSent({
         appId: 1,
         appToken: 'tok',
         title: 'Plain',
         body: 'Body',
-    });
+    }));
 });
 
 test('sendIndieNotification passes rich fields to /api/indie/notification', async () => {
@@ -342,6 +350,19 @@ test('indie pages add ?perNotification=true only when asked, and mark one row re
         subId: 'sub-1',
         notificationId: 99,
     });
+});
+
+test('mark-read helpers send nothing without a notificationId (the endpoint would mark EVERY notification read)', async () => {
+    // Both POST handlers treat a missing/falsy notificationId as the legacy
+    // bulk form — "mark every notification read" for the device / the sub —
+    // so a one-row mark called with row.id (undefined; the field is
+    // notification_id) would silently clear the whole inbox and resolve true.
+    for (const missing of [undefined, null, 0, '']) {
+        axiosCalls.length = 0;
+        assert.equal(await nn.markMassNotificationRead(missing, 4547, 'tok'), false);
+        assert.equal(await nn.markIndieNotificationRead(missing, 'sub-1', 4547, 'tok'), false);
+        assert.equal(axiosCalls.length, 0, `no request for notificationId=${JSON.stringify(missing)}`);
+    }
 });
 
 // ---- open reporting ----------------------------------------------------------

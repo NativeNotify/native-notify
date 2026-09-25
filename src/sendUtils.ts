@@ -90,3 +90,21 @@ export function buildSendPayload(options?: SendNotificationOptions): { [key: str
 
     return payload;
 }
+
+/**
+ * The inbox date format the mass send endpoint stores ("M-D-YYYY H:MMAM",
+ * e.g. "9-24-2026 3:05PM", device-local time) — the same string the
+ * dashboard's legacyDateSent() and the server's formatDateSent() produce, and
+ * the shape inboxUtils.parseDateValue() reads back.
+ */
+export function legacyDateSent(date: Date = new Date()): string {
+    let hour = date.getHours();
+    let meridiem = 'AM';
+    if (hour === 12) {
+        meridiem = 'PM';
+    } else if (hour > 12) {
+        meridiem = 'PM';
+        hour -= 12;
+    }
+    return `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear()} ${hour}:${('0' + date.getMinutes()).slice(-2)}${meridiem}`;
+}
